@@ -1,0 +1,10 @@
+.gradle/
+local.properties
+/build/
+/app/build/
+*.iml
+MapTest.java
+SolverTest.java
+maptest-out/
+solvertest-out/
+third_party_review/

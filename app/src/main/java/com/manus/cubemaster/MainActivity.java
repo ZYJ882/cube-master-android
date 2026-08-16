@@ -307,6 +307,11 @@ public final class MainActivity extends AppCompatActivity {
         if (playing) {
             stopPlayback();
         } else {
+            if (playbackIndex >= solutionMoves.size()) {
+                cube.setFacelets(beforePlayback == null ? cube.facelets() : beforePlayback);
+                playbackIndex = 0;
+                refreshAll();
+            }
             playing = true;
             playButton.setText("暂停还原");
             playbackTick.run();
