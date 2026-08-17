@@ -199,3 +199,41 @@
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
+
+
+---
+
+## Layer-by-layer solver core
+
+部分真实入门层先法状态机源自并经 Android 适配修改自：
+
+- Shoumyo Chakravorti, [`SChakravorti21/Rubiks-Cube-Solver`](https://github.com/SChakravorti21/Rubiks-Cube-Solver)
+- 原始文件：`Cube.java`、`Cubie.java`、`CubieColor.java`
+- 原始版权：Copyright 2017, Shoumyo Chakravorti
+- 许可证：MIT License
+
+本项目移除了原项目的桌面图形界面代码，增加了当前 `URFDLB` 面片状态的适配、阶段不变量验证与 Android 动画分段支持。
+
+```text
+MIT License
+
+Copyright (c) 2017 Shoumyo Chakravorti
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```

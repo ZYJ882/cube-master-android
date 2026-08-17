@@ -1,0 +1,2 @@
+b3df448c99cd48c785b6c4801b59f74fb42278624230b550e8dcdbe3fc5a2c7b  CubeMaster-3x3-v1.1.17-real-layered-debug.apk
+1afbc7c4db9137f106712dcf72abd70ed443bba85f082ada0fa72293461b39ac  CubeMaster-3x3-v1.1.17-Android-Source.zip
