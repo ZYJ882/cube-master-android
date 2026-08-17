@@ -1,0 +1,2 @@
+46b3488bc213e5c04960847546ae16ae347dfe0d44c5c1fd54a0e69807241520  CubeMaster-3x3-v1.1.21-secure-random-debug.apk
+f21a9a0d6ba08117610465c76e4eb0e12d3aaefb32cc0a80d230cf3032e09e8b  CubeMaster-3x3-v1.1.21-Android-Source.zip

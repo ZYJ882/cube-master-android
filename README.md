@@ -17,6 +17,7 @@
 
 | 版本 | 名称 | 主要更新 | 版本目录 |
 |---|---|---|---|
+| `v1.1.21` | 安全随机打乱验证版 | 将打乱熵源升级为系统安全随机；保留 22 步合法外层转动及相邻同面/同轴限制。三组审计状态均验证为可解，Kociemba 输出完成复原且不等于打乱动作逆序。 | [`versions/v1.1.21`](versions/v1.1.21/) |
 | `v1.1.20` | Roux / ZZ 独立阶段规划版 | 新增真实 Roux（First Block → Second Block → CMLL → M/U LSE）与真实 ZZ（EOLine → 受限 F2L → OCLL → PLL）；加入组合 Block 剪枝表、逐阶段主状态验证，并修正 M/E/S 固定中心语义。 | [`versions/v1.1.20`](versions/v1.1.20/) |
 | `v1.1.19` | 真实 CFOP 独立规划版 | 新增 Cross → F2L → OLL → PLL 独立动作内核、逐阶段主状态验证和分段动画；不是 Kociemba 步骤改名。 | [`versions/v1.1.19`](versions/v1.1.19/) |
 | `v1.1.18` | 层先法面板稳定修复版 | 修复计算真实层先法后求解面板可能消失的问题；动态重测量、12 秒有界超时和步骤规模保护。 | [`versions/v1.1.18`](versions/v1.1.18/) |
@@ -74,4 +75,4 @@
 
 ## Releases
 
-请从 [Releases](https://github.com/ZYJ882/cube-master-android/releases) 下载已归档版本的 APK。当前最新版本为 [`v1.1.20`](versions/v1.1.20/)。
+请从 [Releases](https://github.com/ZYJ882/cube-master-android/releases) 下载已归档版本的 APK。当前最新版本为 [`v1.1.21`](versions/v1.1.21/)。

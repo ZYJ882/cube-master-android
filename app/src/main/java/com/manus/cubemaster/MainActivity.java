@@ -33,7 +33,7 @@ import com.manus.cubemaster.solver.ZzSolver;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Random;
+import java.security.SecureRandom;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -54,7 +54,8 @@ public final class MainActivity extends AppCompatActivity {
     private final List<String> lastScrambleMoves = new ArrayList<>();
     private final List<AppCompatButton> solveMethodButtons = new ArrayList<>();
     private SolveMethod selectedSolveMethod = SolveMethod.KOCIEMBA;
-    private final Random random = new Random();
+    /** 打乱采用系统熵支持的安全随机源；仅生成合法外层转动。 */
+    private final SecureRandom random = new SecureRandom();
     private Future<?> warmUpFuture;
     private Future<?> activeSolveFuture;
     private boolean solveInProgress = false;
@@ -659,7 +660,7 @@ public final class MainActivity extends AppCompatActivity {
         playbackIndex = 0;
         playButton.setEnabled(false);
         solutionText.setText("已生成 22 步合法打乱：\n" + joinMoves(lastScrambleMoves) + "\n\n请点击“" + calculateButtonLabel() + "”，生成当前选择策略的可播放步骤。 ");
-        playStatus.setText("打乱仅由合法面转动组成；将针对当前面片状态生成所选还原路线。 ");
+        playStatus.setText("已用系统安全随机源生成 22 步合法面转；将针对当前面片状态独立计算所选还原路线。 ");
         refreshAll();
     }
 
