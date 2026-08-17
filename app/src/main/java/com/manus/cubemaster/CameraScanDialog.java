@@ -6,6 +6,7 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.RectF;
+import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.util.Size;
 import android.view.Gravity;
@@ -78,26 +79,29 @@ public final class CameraScanDialog extends Dialog implements ImageAnalysis.Anal
 
     private View content() {
         FrameLayout root = new FrameLayout(getContext());
-        root.setBackgroundColor(Color.BLACK);
+        root.setBackgroundColor(Color.rgb(6, 14, 31));
         previewView = new PreviewView(getContext());
         previewView.setScaleType(PreviewView.ScaleType.FILL_CENTER);
+        previewView.setAlpha(.88f);
         root.addView(previewView, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
         root.addView(new GuideOverlay(getContext()), new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
 
         LinearLayout chrome = new LinearLayout(getContext());
         chrome.setOrientation(LinearLayout.VERTICAL);
-        chrome.setPadding(dp(18), dp(38), dp(18), dp(22));
+        chrome.setPadding(dp(18), dp(18), dp(18), dp(15));
         chrome.setGravity(Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+        chrome.setBackground(glassBackground(Color.argb(130, 10, 28, 61), 24));
         faceTitle = new TextView(getContext());
-        faceTitle.setTextColor(Color.WHITE);
-        faceTitle.setTextSize(19);
+        faceTitle.setTextColor(Color.rgb(244, 250, 255));
+        faceTitle.setTextSize(20);
+        faceTitle.setTypeface(null, 1);
         faceTitle.setGravity(Gravity.CENTER);
         chrome.addView(faceTitle, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(32)));
 
         TextView instruction = new TextView(getContext());
         instruction.setText("让一个面的九格对准中央方框；识别后仍可在上色面板修正。\n光线均匀、避免反光时结果最佳。");
-        instruction.setTextColor(Color.rgb(220, 226, 235));
-        instruction.setTextSize(13);
+        instruction.setTextColor(Color.rgb(202, 224, 246));
+        instruction.setTextSize(12);
         instruction.setGravity(Gravity.CENTER);
         chrome.addView(instruction, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(52)));
 
@@ -109,29 +113,35 @@ public final class CameraScanDialog extends Dialog implements ImageAnalysis.Anal
             button.setAllCaps(false);
             button.setText(String.valueOf(CubeState.FACE_ORDER.charAt(i)));
             button.setTextSize(13);
+            button.setTextColor(Color.rgb(242, 250, 255));
             button.setPadding(0, 0, 0, 0);
+            button.setBackground(glassBackground(Color.argb(80, 232, 248, 255), 13));
             button.setOnClickListener(v -> { selectedFace = face; refreshTitle(); });
             faceRow.addView(button, new LinearLayout.LayoutParams(dp(43), dp(36)) {{ setMargins(dp(1), 0, dp(1), 0); }});
         }
         chrome.addView(faceRow, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(42)));
-        root.addView(chrome, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.TOP));
+        FrameLayout.LayoutParams chromeParams = new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.TOP);
+        chromeParams.setMargins(dp(12), dp(20), dp(12), 0);
+        root.addView(chrome, chromeParams);
 
         LinearLayout bottom = new LinearLayout(getContext());
         bottom.setOrientation(LinearLayout.VERTICAL);
-        bottom.setPadding(dp(18), dp(8), dp(18), dp(18));
+        bottom.setPadding(dp(18), dp(10), dp(18), dp(16));
         bottom.setGravity(Gravity.CENTER_HORIZONTAL);
+        bottom.setBackground(glassBackground(Color.argb(142, 10, 28, 61), 24));
         status = new TextView(getContext());
-        status.setTextColor(Color.rgb(210, 217, 229));
-        status.setTextSize(13);
+        status.setTextColor(Color.rgb(210, 233, 250));
+        status.setTextSize(12);
         status.setGravity(Gravity.CENTER);
         status.setText("正在识别颜色…");
         bottom.addView(status, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(26)));
         AppCompatButton capture = new AppCompatButton(getContext());
         capture.setText("保存当前面");
         capture.setAllCaps(false);
-        capture.setTextColor(Color.rgb(13, 22, 20));
-        capture.setTextSize(16);
-        capture.setBackgroundColor(Color.rgb(110, 231, 183));
+        capture.setTextColor(Color.rgb(7, 29, 39));
+        capture.setTypeface(null, 1);
+        capture.setTextSize(15);
+        capture.setBackground(gradient(new int[]{Color.rgb(148, 243, 198), Color.rgb(113, 208, 255)}, 17, Color.argb(158, 241, 255, 255), dp(1)));
         capture.setOnClickListener(v -> {
             char[] sample = latestColors.clone();
             sample[4] = CubeState.FACE_ORDER.charAt(selectedFace);
@@ -142,16 +152,31 @@ public final class CameraScanDialog extends Dialog implements ImageAnalysis.Anal
         AppCompatButton close = new AppCompatButton(getContext());
         close.setText("完成扫描");
         close.setAllCaps(false);
-        close.setTextColor(Color.WHITE);
+        close.setTextColor(Color.rgb(240, 248, 255));
+        close.setTextSize(13);
+        close.setBackground(glassBackground(Color.argb(78, 238, 250, 255), 14));
         close.setOnClickListener(v -> dismiss());
         bottom.addView(close, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(40)));
-        root.addView(bottom, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM));
+        FrameLayout.LayoutParams bottomParams = new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM);
+        bottomParams.setMargins(dp(12), 0, dp(12), dp(16));
+        root.addView(bottom, bottomParams);
         refreshTitle();
         return root;
     }
 
     private void refreshTitle() {
         if (faceTitle != null) faceTitle.setText("拍摄 " + CubeState.FACE_ORDER.charAt(selectedFace) + " 面");
+    }
+
+    private GradientDrawable glassBackground(int fill, int radiusDp) {
+        return gradient(new int[]{Color.argb(Math.min(170, Color.alpha(fill) + 25), 245, 253, 255), fill}, radiusDp, Color.argb(116, 217, 245, 255), dp(1));
+    }
+
+    private GradientDrawable gradient(int[] colors, int radiusDp, int strokeColor, int strokeWidth) {
+        GradientDrawable drawable = new GradientDrawable(GradientDrawable.Orientation.TL_BR, colors);
+        drawable.setCornerRadius(dp(radiusDp));
+        drawable.setStroke(strokeWidth, strokeColor);
+        return drawable;
     }
 
     private void startCamera() {
@@ -252,10 +277,10 @@ public final class CameraScanDialog extends Dialog implements ImageAnalysis.Anal
             float top = (getHeight() - side) / 2f - getHeight() * 0.03f;
             paint.setStyle(Paint.Style.STROKE);
             paint.setStrokeWidth(4f);
-            paint.setColor(Color.argb(230, 110, 231, 183));
+            paint.setColor(Color.argb(238, 143, 224, 255));
             canvas.drawRoundRect(new RectF(left, top, left + side, top + side), 14f, 14f, paint);
             paint.setStrokeWidth(2f);
-            paint.setColor(Color.argb(180, 255, 255, 255));
+            paint.setColor(Color.argb(190, 224, 248, 255));
             for (int i = 1; i < 3; i++) {
                 float d = side * i / 3f;
                 canvas.drawLine(left + d, top, left + d, top + side, paint);

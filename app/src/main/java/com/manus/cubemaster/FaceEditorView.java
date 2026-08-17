@@ -2,9 +2,9 @@ package com.manus.cubemaster;
 
 import android.content.Context;
 import android.graphics.Color;
+import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.view.Gravity;
-import android.view.View;
 import android.widget.GridLayout;
 import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
@@ -12,7 +12,7 @@ import android.widget.TextView;
 
 import androidx.appcompat.widget.AppCompatButton;
 
-/** 用于修正识别结果或逐格手动录入的单面上色面板。 */
+/** 液态玻璃风格的面片编辑器：分段选面、锁定中心块及可视色板。 */
 public final class FaceEditorView extends LinearLayout {
     public interface Listener { void onCubeEdited(); }
 
@@ -28,7 +28,7 @@ public final class FaceEditorView extends LinearLayout {
         super(context);
         this.cube = cube;
         setOrientation(VERTICAL);
-        setPadding(dp(4), dp(4), dp(4), dp(4));
+        setPadding(0, dp(2), 0, dp(2));
         build();
         refresh();
     }
@@ -47,6 +47,8 @@ public final class FaceEditorView extends LinearLayout {
     }
 
     private void build() {
+        TextView faceLabel = label("EDIT FACE");
+        addView(faceLabel, new LayoutParams(LayoutParams.MATCH_PARENT, dp(19)));
         HorizontalScrollView facesScroll = new HorizontalScrollView(getContext());
         facesScroll.setHorizontalScrollBarEnabled(false);
         LinearLayout faceRow = new LinearLayout(getContext());
@@ -56,15 +58,15 @@ public final class FaceEditorView extends LinearLayout {
             AppCompatButton button = compactButton(CubeState.FACE_ORDER.substring(i, i + 1));
             button.setOnClickListener(v -> setActiveFace(face));
             faceButtons[i] = button;
-            faceRow.addView(button, new LinearLayout.LayoutParams(dp(48), dp(38)) {{ setMargins(dp(2), 0, dp(2), 0); }});
+            faceRow.addView(button, new LinearLayout.LayoutParams(dp(47), dp(39)) {{ setMargins(0, 0, dp(5), 0); }});
         }
         facesScroll.addView(faceRow);
-        addView(facesScroll, new LayoutParams(LayoutParams.MATCH_PARENT, dp(42)));
+        addView(facesScroll, new LayoutParams(LayoutParams.MATCH_PARENT, dp(44)));
 
         GridLayout grid = new GridLayout(getContext());
         grid.setRowCount(3);
         grid.setColumnCount(3);
-        grid.setPadding(dp(6), dp(8), dp(6), dp(8));
+        grid.setPadding(0, dp(9), 0, dp(8));
         for (int i = 0; i < 9; i++) {
             final int local = i;
             AppCompatButton sticker = new AppCompatButton(getContext());
@@ -79,41 +81,56 @@ public final class FaceEditorView extends LinearLayout {
             stickerButtons[i] = sticker;
             GridLayout.LayoutParams params = new GridLayout.LayoutParams();
             params.width = 0;
-            params.height = dp(52);
+            params.height = dp(56);
             params.columnSpec = GridLayout.spec(local % 3, 1f);
             params.rowSpec = GridLayout.spec(local / 3, 1f);
-            params.setMargins(dp(2), dp(2), dp(2), dp(2));
+            params.setMargins(dp(3), dp(3), dp(3), dp(3));
             grid.addView(sticker, params);
         }
-        addView(grid, new LayoutParams(LayoutParams.MATCH_PARENT, dp(184)));
+        addView(grid, new LayoutParams(LayoutParams.MATCH_PARENT, dp(194)));
 
         TextView hint = new TextView(getContext());
-        hint.setText("选择颜色后点按面片；中心色固定为标准配色");
-        hint.setTextColor(Color.rgb(170, 180, 195));
-        hint.setTextSize(12);
+        hint.setText("中心块固定为标准配色 · 先选色，再点按面片");
+        hint.setTextColor(Color.rgb(181, 211, 238));
+        hint.setTextSize(11);
         hint.setGravity(Gravity.CENTER_HORIZONTAL);
-        addView(hint, new LayoutParams(LayoutParams.MATCH_PARENT, dp(24)));
+        addView(hint, new LayoutParams(LayoutParams.MATCH_PARENT, dp(25)));
 
+        TextView paletteLabel = label("COLOR PALETTE");
+        paletteLabel.setPadding(dp(2), dp(5), 0, 0);
+        addView(paletteLabel, new LayoutParams(LayoutParams.MATCH_PARENT, dp(25)));
         LinearLayout palette = new LinearLayout(getContext());
         palette.setGravity(Gravity.CENTER);
         for (int i = 0; i < 6; i++) {
             final char color = CubeState.FACE_ORDER.charAt(i);
             AppCompatButton swatch = new AppCompatButton(getContext());
             swatch.setText(String.valueOf(color));
-            swatch.setTextColor(color == 'D' || color == 'U' ? Color.DKGRAY : Color.WHITE);
+            swatch.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+            swatch.setTextColor(color == 'D' || color == 'U' ? Color.rgb(16, 35, 52) : Color.WHITE);
             swatch.setTextSize(12);
             swatch.setPadding(0, 0, 0, 0);
             swatch.setOnClickListener(v -> { selectedColor = color; refreshPalette(); });
             paletteButtons[i] = swatch;
-            palette.addView(swatch, new LinearLayout.LayoutParams(dp(40), dp(38)) {{ setMargins(dp(2), 0, dp(2), 0); }});
+            palette.addView(swatch, new LinearLayout.LayoutParams(dp(42), dp(40)) {{ setMargins(dp(2), 0, dp(2), 0); }});
         }
-        addView(palette, new LayoutParams(LayoutParams.MATCH_PARENT, dp(44)));
+        addView(palette, new LayoutParams(LayoutParams.MATCH_PARENT, dp(45)));
+    }
+
+    private TextView label(String content) {
+        TextView label = new TextView(getContext());
+        label.setText(content);
+        label.setTextColor(Color.rgb(140, 223, 255));
+        label.setTextSize(10);
+        label.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        label.setLetterSpacing(.14f);
+        return label;
     }
 
     private AppCompatButton compactButton(String text) {
         AppCompatButton button = new AppCompatButton(getContext());
         button.setText(text);
         button.setTextSize(13);
+        button.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         button.setAllCaps(false);
         button.setPadding(0, 0, 0, 0);
         return button;
@@ -121,17 +138,21 @@ public final class FaceEditorView extends LinearLayout {
 
     public void refresh() {
         for (int i = 0; i < 6; i++) {
-            faceButtons[i].setText((i == activeFace ? "● " : "") + CubeState.FACE_ORDER.charAt(i));
-            faceButtons[i].setTextColor(i == activeFace ? Color.rgb(110, 231, 183) : Color.rgb(220, 226, 235));
-            faceButtons[i].setBackground(background(i == activeFace ? Color.rgb(43, 59, 74) : Color.rgb(31, 37, 48), 8, Color.TRANSPARENT, 0));
+            boolean active = i == activeFace;
+            faceButtons[i].setText((active ? "●  " : "") + CubeState.FACE_ORDER.charAt(i));
+            faceButtons[i].setTextColor(active ? Color.rgb(10, 30, 48) : Color.rgb(232, 246, 255));
+            faceButtons[i].setBackground(active
+                    ? gradient(new int[]{Color.rgb(153, 239, 209), Color.rgb(124, 206, 255)}, 13, Color.argb(125, 238, 255, 255), dp(1))
+                    : gradient(new int[]{Color.argb(70, 255, 255, 255), Color.argb(35, 133, 194, 255)}, 13, Color.argb(81, 212, 241, 255), dp(1)));
         }
         for (int i = 0; i < 9; i++) {
             char color = cube.get(CubeState.stickerIndex(activeFace, i / 3, i % 3));
             boolean center = i == 4;
             stickerButtons[i].setEnabled(!center);
-            stickerButtons[i].setBackground(background(CubeState.colorArgb(color), 8, center ? Color.WHITE : Color.rgb(28, 33, 42), center ? dp(2) : dp(1)));
+            stickerButtons[i].setBackground(stickerBackground(CubeState.colorArgb(color), center));
             stickerButtons[i].setText(center ? String.valueOf(CubeState.FACE_ORDER.charAt(activeFace)) : "");
-            stickerButtons[i].setTextColor(Color.argb(180, 20, 24, 30));
+            stickerButtons[i].setTextColor(Color.argb(185, 8, 21, 33));
+            stickerButtons[i].setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         }
         refreshPalette();
     }
@@ -139,20 +160,30 @@ public final class FaceEditorView extends LinearLayout {
     private void refreshPalette() {
         for (int i = 0; i < 6; i++) {
             char color = CubeState.FACE_ORDER.charAt(i);
-            paletteButtons[i].setBackground(background(CubeState.colorArgb(color), 10,
-                    color == selectedColor ? Color.WHITE : Color.rgb(48, 57, 71), color == selectedColor ? dp(3) : dp(1)));
+            boolean chosen = color == selectedColor;
+            paletteButtons[i].setBackground(gradient(
+                    new int[]{CubeState.colorArgb(color), lighten(CubeState.colorArgb(color), 26)},
+                    14,
+                    chosen ? Color.WHITE : Color.argb(110, 220, 242, 255),
+                    chosen ? dp(3) : dp(1)));
         }
     }
 
-    private GradientDrawable background(int fill, int radius, int stroke, int strokeWidth) {
-        GradientDrawable drawable = new GradientDrawable();
-        drawable.setColor(fill);
-        drawable.setCornerRadius(dp(radius));
+    private GradientDrawable stickerBackground(int color, boolean center) {
+        return gradient(new int[]{lighten(color, 18), color}, 16,
+                center ? Color.rgb(245, 254, 255) : Color.argb(122, 238, 251, 255), center ? dp(3) : dp(1));
+    }
+
+    private GradientDrawable gradient(int[] colors, int radiusDp, int stroke, int strokeWidth) {
+        GradientDrawable drawable = new GradientDrawable(GradientDrawable.Orientation.TL_BR, colors);
+        drawable.setCornerRadius(dp(radiusDp));
         if (strokeWidth > 0) drawable.setStroke(strokeWidth, stroke);
         return drawable;
     }
 
-    private int dp(int value) {
-        return (int) (value * getResources().getDisplayMetrics().density + 0.5f);
+    private static int lighten(int color, int amount) {
+        return Color.rgb(Math.min(255, Color.red(color) + amount), Math.min(255, Color.green(color) + amount), Math.min(255, Color.blue(color) + amount));
     }
+
+    private int dp(int value) { return (int) (value * getResources().getDisplayMetrics().density + .5f); }
 }

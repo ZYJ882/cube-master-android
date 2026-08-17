@@ -3,12 +3,14 @@ package com.manus.cubemaster;
 import android.Manifest;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
+import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.Gravity;
 import android.view.View;
+import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -16,7 +18,6 @@ import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.AppCompatButton;
@@ -25,13 +26,12 @@ import androidx.core.content.ContextCompat;
 import com.manus.cubemaster.solver.SolverFacade;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Random;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-/** 魔方大师首版主界面：离线求解、相机辅助录入、3D 浏览和可调速还原。 */
+/** 液态玻璃版主界面：三维浏览、相机辅助录入、离线求解与动态还原。 */
 public final class MainActivity extends AppCompatActivity {
     private static final int CAMERA_PERMISSION = 2001;
     private final CubeState cube = new CubeState();
@@ -46,6 +46,7 @@ public final class MainActivity extends AppCompatActivity {
     private TextView solutionText;
     private TextView playStatus;
     private TextView speedLabel;
+    private TextView heroStatus;
     private AppCompatButton solveButton;
     private AppCompatButton playButton;
     private SeekBar speedBar;
@@ -55,138 +56,245 @@ public final class MainActivity extends AppCompatActivity {
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        getWindow().setStatusBarColor(Color.rgb(16, 19, 26));
-        getWindow().setNavigationBarColor(Color.rgb(16, 19, 26));
+        getWindow().setStatusBarColor(Color.TRANSPARENT);
+        getWindow().setNavigationBarColor(Color.rgb(8, 15, 34));
         setContentView(buildContent());
         refreshAll();
     }
 
     private View buildContent() {
+        FrameLayout root = new FrameLayout(this);
+        root.addView(new LiquidBackdropView(this), new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
-        scroll.setBackgroundColor(Color.rgb(16, 19, 26));
+        scroll.setClipToPadding(false);
+        scroll.setVerticalScrollBarEnabled(false);
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
-        content.setPadding(dp(16), dp(14), dp(16), dp(28));
+        content.setPadding(dp(18), dp(18), dp(18), dp(38));
         scroll.addView(content, new ScrollView.LayoutParams(ScrollView.LayoutParams.MATCH_PARENT, ScrollView.LayoutParams.WRAP_CONTENT));
+        root.addView(scroll, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
 
+        content.addView(buildHeader(), marginParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT, 0, 0, 0, 14));
+        content.addView(buildHero(), marginParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT, 0, 0, 0, 12));
+        content.addView(buildQuickActions(), marginParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(64), 0, 0, 0, 12));
+        content.addView(buildTurnsPanel(), marginParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT, 0, 0, 0, 12));
+        content.addView(buildEditorPanel(), marginParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT, 0, 0, 0, 12));
+        content.addView(buildSolutionPanel());
+
+        TextView attribution = text("离线两阶段求解 · 所有数据仅保留在设备本地", 11, Color.rgb(177, 201, 225));
+        attribution.setGravity(Gravity.CENTER);
+        attribution.setPadding(0, dp(13), 0, 0);
+        content.addView(attribution, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(34)));
+        return root;
+    }
+
+    private View buildHeader() {
         LinearLayout header = new LinearLayout(this);
-        header.setOrientation(LinearLayout.VERTICAL);
-        TextView title = text("魔方大师", 28, Color.rgb(244, 247, 251));
-        title.setTypeface(null, 1);
-        header.addView(title);
-        TextView subtitle = text("3×3 离线识别 · 高效求解 · 动态还原", 13, Color.rgb(170, 180, 195));
-        subtitle.setPadding(0, dp(2), 0, dp(12));
-        header.addView(subtitle);
-        content.addView(header);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        header.setPadding(dp(2), 0, dp(2), 0);
 
-        LinearLayout cubeCard = panel();
-        cubeCard.setPadding(dp(10), dp(8), dp(10), dp(8));
+        TextView monogram = text("C", 20, Color.rgb(7, 25, 33));
+        monogram.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        monogram.setGravity(Gravity.CENTER);
+        monogram.setBackground(gradient(new int[]{Color.rgb(149, 243, 197), Color.rgb(111, 202, 255)}, 18, Color.TRANSPARENT, 0));
+        header.addView(monogram, new LinearLayout.LayoutParams(dp(40), dp(40)));
+
+        LinearLayout titleBlock = new LinearLayout(this);
+        titleBlock.setOrientation(LinearLayout.VERTICAL);
+        titleBlock.setPadding(dp(11), 0, 0, 0);
+        TextView eyebrow = text("CUBE INTELLIGENCE", 10, Color.rgb(143, 224, 255));
+        eyebrow.setLetterSpacing(.14f);
+        titleBlock.addView(eyebrow, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(17)));
+        TextView title = text("魔方大师", 27, Color.WHITE);
+        title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        titleBlock.addView(title, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(34)));
+        header.addView(titleBlock, new LinearLayout.LayoutParams(0, dp(50), 1f));
+
+        heroStatus = text("READY", 10, Color.rgb(190, 255, 222));
+        heroStatus.setLetterSpacing(.1f);
+        heroStatus.setGravity(Gravity.CENTER);
+        heroStatus.setPadding(dp(10), 0, dp(10), 0);
+        heroStatus.setBackground(gradient(new int[]{Color.argb(95, 89, 207, 155), Color.argb(65, 70, 168, 156)}, 16, Color.argb(112, 195, 255, 229), dp(1)));
+        header.addView(heroStatus, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(30)));
+        return header;
+    }
+
+    private View buildHero() {
+        GlassCardLayout hero = glassCard(Color.argb(44, 220, 242, 255));
+        hero.setPadding(dp(15), dp(14), dp(15), dp(13));
+        LinearLayout meta = new LinearLayout(this);
+        meta.setGravity(Gravity.CENTER_VERTICAL);
+        TextView label = text("LIVE CUBE", 11, Color.rgb(180, 228, 255));
+        label.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        label.setLetterSpacing(.16f);
+        meta.addView(label, new LinearLayout.LayoutParams(0, dp(23), 1f));
+        TextView chip = text("3 × 3 × 3", 11, Color.rgb(231, 247, 255));
+        chip.setGravity(Gravity.CENTER);
+        chip.setPadding(dp(9), 0, dp(9), 0);
+        chip.setBackground(gradient(new int[]{Color.argb(74, 107, 166, 255), Color.argb(42, 235, 255, 255)}, 14, Color.argb(72, 224, 247, 255), dp(1)));
+        meta.addView(chip, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(28)));
+        hero.addView(meta, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(30)));
+
+        FrameLayout stage = new FrameLayout(this);
+        stage.setBackground(gradient(new int[]{Color.argb(42, 8, 24, 58), Color.argb(18, 255, 255, 255)}, 24, Color.argb(64, 213, 242, 255), dp(1)));
         cubeView = new Cube3DView(this);
         cubeView.setContentDescription("可拖拽旋转浏览的三维魔方");
         cubeView.setTapListener(() -> cubeView.resetCamera());
-        cubeCard.addView(cubeView, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(310)));
-        TextView gestureHint = text("单指拖拽浏览 · 轻点复位视角", 12, Color.rgb(170, 180, 195));
-        gestureHint.setGravity(Gravity.CENTER);
-        cubeCard.addView(gestureHint, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(25)));
-        content.addView(cubeCard, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT, 0, 0, 0, 12));
+        stage.addView(cubeView, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, dp(312)));
+        TextView cue = text("拖拽以环绕浏览 · 轻点回到主视角", 11, Color.rgb(190, 215, 239));
+        cue.setGravity(Gravity.CENTER);
+        cue.setBackground(gradient(new int[]{Color.argb(66, 16, 32, 66), Color.argb(28, 255, 255, 255)}, 15, Color.argb(42, 219, 242, 255), dp(1)));
+        FrameLayout.LayoutParams cueParams = new FrameLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(30), Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+        cueParams.bottomMargin = dp(11);
+        stage.addView(cue, cueParams);
+        hero.addView(stage, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(312)));
 
-        LinearLayout quickRow = new LinearLayout(this);
-        quickRow.setGravity(Gravity.CENTER);
-        AppCompatButton scan = actionButton("相机识图", Color.rgb(64, 110, 224), Color.WHITE);
+        TextView brief = text("立体状态与真实面片颜色同步更新", 12, Color.rgb(177, 207, 233));
+        brief.setPadding(dp(3), dp(10), dp(3), 0);
+        hero.addView(brief, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(32)));
+        return hero;
+    }
+
+    private View buildQuickActions() {
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        AppCompatButton scan = glassAction("⌁  识图", Color.rgb(117, 209, 255), Color.rgb(7, 25, 43));
         scan.setOnClickListener(v -> openScanner());
-        quickRow.addView(scan, weighted(0, dp(48), 1f, 0, 0, dp(4), 0));
-        AppCompatButton scramble = actionButton("随机打乱", Color.rgb(45, 55, 72), Color.WHITE);
+        row.addView(scan, weighted(0, dp(58), 1.12f, 0, 0, dp(6), 0));
+        AppCompatButton scramble = glassAction("打乱", Color.argb(68, 255, 255, 255), Color.WHITE);
         scramble.setOnClickListener(v -> scramble());
-        quickRow.addView(scramble, weighted(0, dp(48), 1f, dp(4), 0, dp(4), 0));
-        AppCompatButton reset = actionButton("重置魔方", Color.rgb(45, 55, 72), Color.WHITE);
+        row.addView(scramble, weighted(0, dp(58), .82f, dp(3), 0, dp(3), 0));
+        AppCompatButton reset = glassAction("复位", Color.argb(68, 255, 255, 255), Color.WHITE);
         reset.setOnClickListener(v -> resetCube());
-        quickRow.addView(reset, weighted(0, dp(48), 1f, dp(4), 0, 0, 0));
-        content.addView(quickRow, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(48), 0, 0, 0, 12));
+        row.addView(reset, weighted(0, dp(58), .82f, dp(3), 0, 0, 0));
+        return row;
+    }
 
-        LinearLayout turnsPanel = panel();
-        turnsPanel.setPadding(dp(12), dp(10), dp(12), dp(10));
-        TextView turnsTitle = text("手动转动", 14, Color.rgb(244, 247, 251));
-        turnsPanel.addView(turnsTitle);
+    private View buildTurnsPanel() {
+        GlassCardLayout panel = glassCard(Color.argb(38, 185, 209, 255));
+        panel.setPadding(dp(14), dp(13), dp(14), dp(12));
+        panel.addView(sectionHead("CONTROL DECK", "手动转动"));
         HorizontalScrollView turnScroll = new HorizontalScrollView(this);
         turnScroll.setHorizontalScrollBarEnabled(false);
+        turnScroll.setPadding(0, dp(8), 0, 0);
         LinearLayout turns = new LinearLayout(this);
         for (char face : CubeState.FACE_ORDER.toCharArray()) {
             String normal = String.valueOf(face);
-            AppCompatButton clockwise = compactAction(normal, Color.rgb(40, 49, 63));
+            AppCompatButton clockwise = turnPill(normal);
             clockwise.setOnClickListener(v -> applyManualMove(normal));
-            turns.addView(clockwise, new LinearLayout.LayoutParams(dp(46), dp(40)) {{ setMargins(0, dp(6), dp(5), 0); }});
-            String reverse = face + "′";
-            AppCompatButton counter = compactAction(reverse, Color.rgb(40, 49, 63));
+            turns.addView(clockwise, new LinearLayout.LayoutParams(dp(44), dp(42)) {{ setMargins(0, 0, dp(5), 0); }});
+            AppCompatButton counter = turnPill(face + "′");
             counter.setOnClickListener(v -> applyManualMove(face + "'"));
-            turns.addView(counter, new LinearLayout.LayoutParams(dp(46), dp(40)) {{ setMargins(0, dp(6), dp(7), 0); }});
+            turns.addView(counter, new LinearLayout.LayoutParams(dp(44), dp(42)) {{ setMargins(0, 0, dp(10), 0); }});
         }
         turnScroll.addView(turns);
-        turnsPanel.addView(turnScroll, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(52)));
-        content.addView(turnsPanel, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT, 0, 0, 0, 12));
+        panel.addView(turnScroll, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(52)));
+        return panel;
+    }
 
-        LinearLayout editorPanel = panel();
-        editorPanel.setPadding(dp(10), dp(10), dp(10), dp(10));
-        TextView editorTitle = text("手动上色 / 识别结果复核", 16, Color.rgb(244, 247, 251));
-        editorPanel.addView(editorTitle);
-        stateText = text("", 12, Color.rgb(170, 180, 195));
-        stateText.setPadding(0, dp(2), 0, dp(5));
-        editorPanel.addView(stateText);
+    private View buildEditorPanel() {
+        GlassCardLayout panel = glassCard(Color.argb(45, 161, 210, 255));
+        panel.setPadding(dp(14), dp(13), dp(14), dp(12));
+        panel.addView(sectionHead("COLOR LAB", "上色与校正"));
+        stateText = text("", 12, Color.rgb(195, 218, 239));
+        stateText.setPadding(0, dp(5), 0, dp(4));
+        panel.addView(stateText);
         editor = new FaceEditorView(this, cube);
         editor.setListener(this::onCubeEdited);
-        editorPanel.addView(editor, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
-        content.addView(editorPanel, marginParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT, 0, 0, 0, 12));
+        panel.addView(editor, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+        return panel;
+    }
 
-        LinearLayout solvePanel = panel();
-        solvePanel.setPadding(dp(12), dp(12), dp(12), dp(12));
-        TextView solveTitle = text("计算与还原", 16, Color.rgb(244, 247, 251));
-        solvePanel.addView(solveTitle);
-        TextView explain = text("使用设备端两阶段搜索，结果按标准魔方记号显示。求解前会检查颜色数、朝向与奇偶性。", 12, Color.rgb(170, 180, 195));
-        explain.setPadding(0, dp(4), 0, dp(8));
-        solvePanel.addView(explain);
-        solveButton = actionButton("计算高效解法", Color.rgb(110, 231, 183), Color.rgb(13, 22, 20));
+    private View buildSolutionPanel() {
+        GlassCardLayout panel = glassCard(Color.argb(53, 167, 235, 255));
+        panel.setPadding(dp(14), dp(13), dp(14), dp(13));
+        panel.addView(sectionHead("SOLUTION STUDIO", "计算与还原"));
+        TextView explain = text("离线搜索会校验颜色、朝向与奇偶性，再生成可播放的标准记号步骤。", 12, Color.rgb(195, 219, 241));
+        explain.setPadding(0, dp(6), 0, dp(10));
+        panel.addView(explain);
+        solveButton = glassAction("✦  计算高效解法", Color.rgb(149, 243, 197), Color.rgb(7, 29, 31));
+        solveButton.setTextSize(15);
         solveButton.setOnClickListener(v -> calculateSolution());
-        solvePanel.addView(solveButton, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(50)));
-        solutionText = text("尚未计算解法", 14, Color.rgb(244, 247, 251));
-        solutionText.setPadding(dp(4), dp(12), dp(4), dp(6));
-        solutionText.setLineSpacing(dp(3), 1f);
-        solvePanel.addView(solutionText);
+        panel.addView(solveButton, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(54)));
+        solutionText = text("尚未计算解法", 14, Color.WHITE);
+        solutionText.setPadding(dp(4), dp(13), dp(4), dp(8));
+        solutionText.setLineSpacing(dp(4), 1f);
+        panel.addView(solutionText);
 
         LinearLayout speedRow = new LinearLayout(this);
         speedRow.setGravity(Gravity.CENTER_VERTICAL);
-        speedLabel = text("还原速度：×4", 13, Color.rgb(220, 226, 235));
-        speedRow.addView(speedLabel, new LinearLayout.LayoutParams(dp(112), dp(38)));
+        speedRow.setPadding(dp(3), 0, dp(3), 0);
+        speedLabel = text("播放速度  ×4", 12, Color.rgb(204, 229, 249));
+        speedRow.addView(speedLabel, new LinearLayout.LayoutParams(dp(112), dp(42)));
         speedBar = new SeekBar(this);
         speedBar.setMax(9);
         speedBar.setProgress(3);
         speedBar.setContentDescription("还原速度");
         speedBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            @Override public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) { speedLabel.setText("还原速度：×" + (progress + 1)); }
+            @Override public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) { speedLabel.setText("播放速度  ×" + (progress + 1)); }
             @Override public void onStartTrackingTouch(SeekBar seekBar) { }
             @Override public void onStopTrackingTouch(SeekBar seekBar) { }
         });
-        speedRow.addView(speedBar, new LinearLayout.LayoutParams(0, dp(38), 1f));
-        solvePanel.addView(speedRow, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(42)));
+        speedRow.addView(speedBar, new LinearLayout.LayoutParams(0, dp(42), 1f));
+        panel.addView(speedRow, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(44)));
 
-        LinearLayout playbackRow = new LinearLayout(this);
-        playButton = actionButton("开始还原", Color.rgb(64, 110, 224), Color.WHITE);
+        LinearLayout playback = new LinearLayout(this);
+        playButton = glassAction("开始还原", Color.rgb(117, 209, 255), Color.rgb(7, 25, 43));
         playButton.setEnabled(false);
         playButton.setOnClickListener(v -> togglePlayback());
-        playbackRow.addView(playButton, weighted(0, dp(48), 1f, 0, 0, dp(4), 0));
-        AppCompatButton step = actionButton("单步", Color.rgb(45, 55, 72), Color.WHITE);
+        playback.addView(playButton, weighted(0, dp(52), 1f, 0, 0, dp(5), 0));
+        AppCompatButton step = glassAction("单步", Color.argb(75, 255, 255, 255), Color.WHITE);
         step.setOnClickListener(v -> stepPlayback());
-        playbackRow.addView(step, weighted(0, dp(48), 0.56f, dp(4), 0, 0, 0));
-        solvePanel.addView(playbackRow, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(48)));
-        playStatus = text("准备就绪", 12, Color.rgb(170, 180, 195));
+        playback.addView(step, weighted(0, dp(52), .5f, dp(5), 0, 0, 0));
+        panel.addView(playback, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(52)));
+        playStatus = text("准备就绪", 12, Color.rgb(185, 215, 239));
         playStatus.setGravity(Gravity.CENTER);
-        playStatus.setPadding(0, dp(7), 0, 0);
-        solvePanel.addView(playStatus, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(29)));
-        content.addView(solvePanel);
+        playStatus.setPadding(0, dp(9), 0, 0);
+        panel.addView(playStatus, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(32)));
+        return panel;
+    }
 
-        TextView attribution = text("离线求解引擎基于 Apache-2.0 许可的两阶段算法实现；详见工程内 THIRD_PARTY_LICENSES.md。", 10, Color.rgb(120, 132, 148));
-        attribution.setPadding(dp(4), dp(12), dp(4), 0);
-        content.addView(attribution);
-        return scroll;
+    private LinearLayout sectionHead(String eyebrowText, String titleText) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.VERTICAL);
+        TextView eyebrow = text(eyebrowText, 10, Color.rgb(143, 224, 255));
+        eyebrow.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        eyebrow.setLetterSpacing(.14f);
+        row.addView(eyebrow, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(17)));
+        TextView title = text(titleText, 18, Color.WHITE);
+        title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        row.addView(title, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(25)));
+        return row;
+    }
+
+    private GlassCardLayout glassCard(int tint) {
+        GlassCardLayout card = new GlassCardLayout(this);
+        card.setGlassTint(tint);
+        return card;
+    }
+
+    private AppCompatButton glassAction(String label, int fill, int foreground) {
+        AppCompatButton button = new AppCompatButton(this);
+        button.setText(label);
+        button.setAllCaps(false);
+        button.setTextSize(13);
+        button.setTextColor(foreground);
+        button.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        button.setGravity(Gravity.CENTER);
+        button.setPadding(dp(8), 0, dp(8), 0);
+        int start = fill;
+        int end = Color.argb(Math.max(30, Color.alpha(fill) - 24), Math.min(255, Color.red(fill) + 22), Math.min(255, Color.green(fill) + 22), Math.min(255, Color.blue(fill) + 22));
+        button.setBackground(gradient(new int[]{start, end}, 18, Color.argb(86, 229, 247, 255), dp(1)));
+        return button;
+    }
+
+    private AppCompatButton turnPill(String label) {
+        AppCompatButton button = glassAction(label, Color.argb(64, 240, 249, 255), Color.rgb(242, 249, 255));
+        button.setTextSize(14);
+        return button;
     }
 
     private void openScanner() {
@@ -244,7 +352,7 @@ public final class MainActivity extends AppCompatActivity {
         stopPlayback();
         cube.reset();
         solutionMoves.clear();
-        solutionText.setText("魔方已重置为复原状态。");
+        solutionText.setText("魔方已重置为复原状态。\n现在可以扫描真实魔方，或直接随机打乱。 ");
         playButton.setEnabled(false);
         playStatus.setText("准备就绪");
         refreshAll();
@@ -361,7 +469,8 @@ public final class MainActivity extends AppCompatActivity {
     private void refreshAll() {
         if (cubeView != null) cubeView.setFacelets(cube.facelets());
         if (editor != null) editor.refresh();
-        if (stateText != null) stateText.setText("颜色统计：" + colorSummary() + "  ·  中心块：URFDLB");
+        if (stateText != null) stateText.setText("颜色统计：" + colorSummary() + "  ·  中心块已锁定");
+        if (heroStatus != null) heroStatus.setText(cube.facelets().equals(CubeState.SOLVED) ? "SOLVED" : "ACTIVE");
     }
 
     private String colorSummary() {
@@ -376,31 +485,6 @@ public final class MainActivity extends AppCompatActivity {
     private String joinMoves(List<String> moves) { return String.join("  ", moves); }
     private void toast(String text) { Toast.makeText(this, text, Toast.LENGTH_LONG).show(); }
 
-    private LinearLayout panel() {
-        LinearLayout panel = new LinearLayout(this);
-        panel.setOrientation(LinearLayout.VERTICAL);
-        panel.setBackground(round(Color.rgb(26, 31, 42), 18, Color.rgb(56, 66, 82), dp(1)));
-        return panel;
-    }
-
-    private AppCompatButton actionButton(String label, int background, int foreground) {
-        AppCompatButton button = new AppCompatButton(this);
-        button.setText(label);
-        button.setAllCaps(false);
-        button.setTextSize(14);
-        button.setTextColor(foreground);
-        button.setGravity(Gravity.CENTER);
-        button.setPadding(dp(5), 0, dp(5), 0);
-        button.setBackground(round(background, 12, Color.TRANSPARENT, 0));
-        return button;
-    }
-
-    private AppCompatButton compactAction(String label, int background) {
-        AppCompatButton button = actionButton(label, background, Color.rgb(240, 244, 250));
-        button.setTextSize(13);
-        return button;
-    }
-
     private TextView text(String content, int sizeSp, int color) {
         TextView view = new TextView(this);
         view.setText(content);
@@ -409,9 +493,8 @@ public final class MainActivity extends AppCompatActivity {
         return view;
     }
 
-    private GradientDrawable round(int color, int radiusDp, int strokeColor, int strokeWidth) {
-        GradientDrawable drawable = new GradientDrawable();
-        drawable.setColor(color);
+    private GradientDrawable gradient(int[] colors, int radiusDp, int strokeColor, int strokeWidth) {
+        GradientDrawable drawable = new GradientDrawable(GradientDrawable.Orientation.TL_BR, colors);
         drawable.setCornerRadius(dp(radiusDp));
         if (strokeWidth > 0) drawable.setStroke(strokeWidth, strokeColor);
         return drawable;
@@ -429,7 +512,7 @@ public final class MainActivity extends AppCompatActivity {
         return params;
     }
 
-    private int dp(int value) { return (int) (value * getResources().getDisplayMetrics().density + 0.5f); }
+    private int dp(int value) { return (int) (value * getResources().getDisplayMetrics().density + .5f); }
 
     @Override protected void onDestroy() {
         handler.removeCallbacksAndMessages(null);

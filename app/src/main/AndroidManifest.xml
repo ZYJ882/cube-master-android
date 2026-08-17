@@ -5,9 +5,9 @@
 
     <application
         android:allowBackup="true"
-        android:icon="@drawable/ic_cube_launcher"
+        android:icon="@drawable/ic_cube_liquid"
         android:label="魔方大师"
-        android:roundIcon="@drawable/ic_cube_launcher"
+        android:roundIcon="@drawable/ic_cube_liquid"
         android:supportsRtl="true"
         android:theme="@style/Theme.CubeMaster">
         <activity
