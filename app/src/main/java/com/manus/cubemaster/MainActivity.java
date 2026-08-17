@@ -211,7 +211,7 @@ public final class MainActivity extends AppCompatActivity {
     private View buildEditorPanel() {
         GlassCardLayout panel = glassCard(Color.argb(45, 161, 210, 255));
         panel.setPadding(dp(14), dp(13), dp(14), dp(12));
-        panel.addView(sectionHead("COLOR LAB", "上色与校正"));
+        panel.addView(sectionHead("逐面录入", "按真实颜色填魔方"));
         stateText = text("", 12, Color.rgb(195, 218, 239));
         stateText.setPadding(0, dp(5), 0, dp(4));
         panel.addView(stateText);
@@ -318,8 +318,10 @@ public final class MainActivity extends AppCompatActivity {
         new CameraScanDialog(this, this, 0, (face, values) -> {
             cube.setFace(face, values);
             editor.setActiveFace(face);
+            editor.markFaceCaptured(face);
             onCubeEdited();
-            toast("已导入 " + CubeState.FACE_ORDER.charAt(face) + " 面，请在下方复核颜色。");
+            String[] names = {"白色", "红色", "绿色", "黄色", "橙色", "蓝色"};
+            toast("已导入" + names[face] + "面，请在下方复核颜色。");
         }).show();
     }
 
@@ -415,6 +417,11 @@ public final class MainActivity extends AppCompatActivity {
             return;
         }
         stopPlayback();
+        if (editor != null && editor.isManualEntryInProgress() && !editor.isEntryComplete()) {
+            solutionText.setText("还有格子未填写。请按照“第几面”的提示完成九宫格后再计算。 ");
+            playStatus.setText(editor.entryStatus());
+            return;
+        }
         String snapshot = cube.facelets();
         String validation = SolverFacade.validate(snapshot);
         if (validation != null) {
@@ -628,7 +635,7 @@ public final class MainActivity extends AppCompatActivity {
     private void refreshAll() {
         if (cubeView != null) cubeView.setFacelets(cube.facelets());
         if (editor != null) editor.refresh();
-        if (stateText != null) stateText.setText("颜色统计：" + colorSummary() + "  ·  中心块已锁定");
+        if (stateText != null) stateText.setText(editor == null ? "颜色统计：" + colorSummary() : editor.entryStatus());
         if (heroStatus != null) heroStatus.setText(cube.facelets().equals(CubeState.SOLVED) ? "SOLVED" : "ACTIVE");
     }
 

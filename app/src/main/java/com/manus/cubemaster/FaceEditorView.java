@@ -6,15 +6,22 @@ import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.view.Gravity;
 import android.widget.GridLayout;
-import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import androidx.appcompat.widget.AppCompatButton;
 
-/** 液态玻璃风格的面片编辑器：分段选面、锁定中心块及可视色板。 */
+import java.util.Arrays;
+
+/**
+ * 面向普通用户的逐面上色工具。以白、红、绿、黄、橙、蓝六种真实颜色引导，
+ * 支持从零录入、识别后校正、自动跳面和完整性检查。
+ */
 public final class FaceEditorView extends LinearLayout {
     public interface Listener { void onCubeEdited(); }
+
+    private static final String[] COLOR_NAMES = {"白色", "红色", "绿色", "黄色", "橙色", "蓝色"};
+    private static final String[] SHORT_NAMES = {"白", "红", "绿", "黄", "橙", "蓝"};
 
     private CubeState cube;
     private int activeFace = 0;
@@ -22,13 +29,20 @@ public final class FaceEditorView extends LinearLayout {
     private final AppCompatButton[] faceButtons = new AppCompatButton[6];
     private final AppCompatButton[] stickerButtons = new AppCompatButton[9];
     private final AppCompatButton[] paletteButtons = new AppCompatButton[6];
+    private final boolean[] confirmed = new boolean[54];
+    private boolean manualEntryInProgress = false;
+    private TextView stepTitle;
+    private TextView instructionText;
+    private TextView completionText;
+    private AppCompatButton restartButton;
     private Listener listener;
 
     public FaceEditorView(Context context, CubeState cube) {
         super(context);
         this.cube = cube;
+        Arrays.fill(confirmed, true);
         setOrientation(VERTICAL);
-        setPadding(0, dp(2), 0, dp(2));
+        setPadding(0, dp(2), 0, dp(4));
         build();
         refresh();
     }
@@ -46,74 +60,241 @@ public final class FaceEditorView extends LinearLayout {
         refresh();
     }
 
+    /** 从识图流程导入完整一面时，标记该面已由用户确认。 */
+    public void markFaceCaptured(int face) {
+        for (int i = 0; i < 9; i++) confirmed[CubeState.stickerIndex(face, i / 3, i % 3)] = true;
+        if (manualEntryInProgress && allFacesComplete()) manualEntryInProgress = false;
+        refresh();
+    }
+
+    public boolean isManualEntryInProgress() { return manualEntryInProgress; }
+    public boolean isEntryComplete() { return !manualEntryInProgress || allFacesComplete(); }
+
+    public String entryStatus() {
+        if (manualEntryInProgress) return "手动录入进度：" + confirmedEditableCount() + " / 48 格";
+        return "颜色统计：" + colorCounts();
+    }
+
     private void build() {
-        TextView faceLabel = label("EDIT FACE");
-        addView(faceLabel, new LayoutParams(LayoutParams.MATCH_PARENT, dp(19)));
-        HorizontalScrollView facesScroll = new HorizontalScrollView(getContext());
-        facesScroll.setHorizontalScrollBarEnabled(false);
+        LinearLayout heading = new LinearLayout(getContext());
+        heading.setGravity(Gravity.CENTER_VERTICAL);
+        heading.setOrientation(VERTICAL);
+        TextView eyebrow = label("逐面录入 · 识别后校正");
+        heading.addView(eyebrow, new LayoutParams(LayoutParams.MATCH_PARENT, dp(19)));
+        stepTitle = new TextView(getContext());
+        stepTitle.setTextSize(19);
+        stepTitle.setTextColor(Color.WHITE);
+        stepTitle.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        heading.addView(stepTitle, new LayoutParams(LayoutParams.MATCH_PARENT, dp(30)));
+        addView(heading, new LayoutParams(LayoutParams.MATCH_PARENT, dp(51)));
+
+        instructionText = new TextView(getContext());
+        instructionText.setTextColor(Color.rgb(192, 220, 243));
+        instructionText.setTextSize(12);
+        instructionText.setLineSpacing(dp(2), 1f);
+        addView(instructionText, new LayoutParams(LayoutParams.MATCH_PARENT, dp(42)));
+
         LinearLayout faceRow = new LinearLayout(getContext());
-        faceRow.setOrientation(HORIZONTAL);
+        faceRow.setGravity(Gravity.CENTER);
         for (int i = 0; i < 6; i++) {
             final int face = i;
-            AppCompatButton button = compactButton(CubeState.FACE_ORDER.substring(i, i + 1));
+            AppCompatButton button = pillButton(SHORT_NAMES[i]);
             button.setOnClickListener(v -> setActiveFace(face));
             faceButtons[i] = button;
-            faceRow.addView(button, new LinearLayout.LayoutParams(dp(47), dp(39)) {{ setMargins(0, 0, dp(5), 0); }});
+            faceRow.addView(button, new LinearLayout.LayoutParams(0, dp(45), 1f) {{ setMargins(dp(2), 0, dp(2), 0); }});
         }
-        facesScroll.addView(faceRow);
-        addView(facesScroll, new LayoutParams(LayoutParams.MATCH_PARENT, dp(44)));
+        addView(faceRow, new LayoutParams(LayoutParams.MATCH_PARENT, dp(49)));
 
         GridLayout grid = new GridLayout(getContext());
         grid.setRowCount(3);
         grid.setColumnCount(3);
-        grid.setPadding(0, dp(9), 0, dp(8));
+        grid.setPadding(dp(2), dp(8), dp(2), dp(5));
         for (int i = 0; i < 9; i++) {
             final int local = i;
             AppCompatButton sticker = new AppCompatButton(getContext());
-            sticker.setText("");
+            sticker.setAllCaps(false);
             sticker.setPadding(0, 0, 0, 0);
-            sticker.setOnClickListener(v -> {
-                if (local == 4) return;
-                cube.set(CubeState.stickerIndex(activeFace, local / 3, local % 3), selectedColor);
-                refresh();
-                if (listener != null) listener.onCubeEdited();
-            });
+            sticker.setTextSize(12);
+            sticker.setOnClickListener(v -> paintSticker(local));
             stickerButtons[i] = sticker;
             GridLayout.LayoutParams params = new GridLayout.LayoutParams();
             params.width = 0;
-            params.height = dp(56);
+            params.height = dp(88);
             params.columnSpec = GridLayout.spec(local % 3, 1f);
             params.rowSpec = GridLayout.spec(local / 3, 1f);
             params.setMargins(dp(3), dp(3), dp(3), dp(3));
             grid.addView(sticker, params);
         }
-        addView(grid, new LayoutParams(LayoutParams.MATCH_PARENT, dp(194)));
+        addView(grid, new LayoutParams(LayoutParams.MATCH_PARENT, dp(282)));
 
-        TextView hint = new TextView(getContext());
-        hint.setText("中心块固定为标准配色 · 先选色，再点按面片");
-        hint.setTextColor(Color.rgb(181, 211, 238));
-        hint.setTextSize(11);
-        hint.setGravity(Gravity.CENTER_HORIZONTAL);
-        addView(hint, new LayoutParams(LayoutParams.MATCH_PARENT, dp(25)));
+        completionText = new TextView(getContext());
+        completionText.setTextColor(Color.rgb(194, 220, 243));
+        completionText.setTextSize(12);
+        completionText.setGravity(Gravity.CENTER);
+        addView(completionText, new LayoutParams(LayoutParams.MATCH_PARENT, dp(28)));
 
-        TextView paletteLabel = label("COLOR PALETTE");
-        paletteLabel.setPadding(dp(2), dp(5), 0, 0);
-        addView(paletteLabel, new LayoutParams(LayoutParams.MATCH_PARENT, dp(25)));
-        LinearLayout palette = new LinearLayout(getContext());
-        palette.setGravity(Gravity.CENTER);
+        TextView chooseLabel = label("先选颜色，再点九宫格");
+        chooseLabel.setPadding(dp(2), dp(5), 0, 0);
+        addView(chooseLabel, new LayoutParams(LayoutParams.MATCH_PARENT, dp(25)));
+
+        GridLayout palette = new GridLayout(getContext());
+        palette.setColumnCount(3);
+        palette.setRowCount(2);
+        palette.setPadding(0, 0, 0, dp(5));
         for (int i = 0; i < 6; i++) {
-            final char color = CubeState.FACE_ORDER.charAt(i);
+            final int colorIndex = i;
             AppCompatButton swatch = new AppCompatButton(getContext());
-            swatch.setText(String.valueOf(color));
+            swatch.setAllCaps(false);
             swatch.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-            swatch.setTextColor(color == 'D' || color == 'U' ? Color.rgb(16, 35, 52) : Color.WHITE);
             swatch.setTextSize(12);
             swatch.setPadding(0, 0, 0, 0);
-            swatch.setOnClickListener(v -> { selectedColor = color; refreshPalette(); });
+            swatch.setOnClickListener(v -> { selectedColor = CubeState.FACE_ORDER.charAt(colorIndex); refresh(); });
             paletteButtons[i] = swatch;
-            palette.addView(swatch, new LinearLayout.LayoutParams(dp(42), dp(40)) {{ setMargins(dp(2), 0, dp(2), 0); }});
+            GridLayout.LayoutParams params = new GridLayout.LayoutParams();
+            params.width = 0;
+            params.height = dp(58);
+            params.columnSpec = GridLayout.spec(i % 3, 1f);
+            params.rowSpec = GridLayout.spec(i / 3, 1f);
+            params.setMargins(dp(3), dp(3), dp(3), dp(3));
+            palette.addView(swatch, params);
         }
-        addView(palette, new LayoutParams(LayoutParams.MATCH_PARENT, dp(45)));
+        addView(palette, new LayoutParams(LayoutParams.MATCH_PARENT, dp(126)));
+
+        LinearLayout footer = new LinearLayout(getContext());
+        footer.setGravity(Gravity.CENTER_VERTICAL);
+        restartButton = pillButton("从头录入");
+        restartButton.setTextColor(Color.rgb(235, 247, 255));
+        restartButton.setOnClickListener(v -> startFreshEntry());
+        footer.addView(restartButton, new LinearLayout.LayoutParams(0, dp(42), 1f));
+        TextView note = new TextView(getContext());
+        note.setText("中心块固定\n无需填写");
+        note.setTextColor(Color.rgb(172, 205, 232));
+        note.setTextSize(11);
+        note.setGravity(Gravity.CENTER);
+        footer.addView(note, new LinearLayout.LayoutParams(dp(96), dp(42)) {{ setMargins(dp(8), 0, 0, 0); }});
+        addView(footer, new LayoutParams(LayoutParams.MATCH_PARENT, dp(46)));
+    }
+
+    private void paintSticker(int local) {
+        if (local == 4) return;
+        int index = CubeState.stickerIndex(activeFace, local / 3, local % 3);
+        cube.set(index, selectedColor);
+        confirmed[index] = true;
+        boolean faceNowComplete = isFaceComplete(activeFace);
+        if (faceNowComplete) autoAdvance();
+        if (manualEntryInProgress && allFacesComplete()) manualEntryInProgress = false;
+        refresh();
+        if (listener != null) listener.onCubeEdited();
+    }
+
+    private void startFreshEntry() {
+        manualEntryInProgress = true;
+        Arrays.fill(confirmed, false);
+        for (int face = 0; face < 6; face++) confirmed[CubeState.stickerIndex(face, 1, 1)] = true;
+        activeFace = 0;
+        selectedColor = 'U';
+        refresh();
+        if (listener != null) listener.onCubeEdited();
+    }
+
+    private void autoAdvance() {
+        for (int offset = 1; offset <= 6; offset++) {
+            int candidate = (activeFace + offset) % 6;
+            if (!isFaceComplete(candidate)) {
+                activeFace = candidate;
+                selectedColor = CubeState.FACE_ORDER.charAt(candidate);
+                return;
+            }
+        }
+    }
+
+    public void refresh() {
+        if (stepTitle == null) return;
+        String colorName = COLOR_NAMES[activeFace];
+        stepTitle.setText("第 " + (activeFace + 1) + " / 6 面：" + colorName + "面");
+        instructionText.setText(manualEntryInProgress
+                ? "请让「" + colorName + "中心块」朝向自己，然后按实际颜色填写周围 8 格。填完会自动进入下一面。"
+                : "识别有误时：先选择正确颜色，再点要修改的格子。若从零录入，请点下方“从头录入”。");
+
+        for (int i = 0; i < 6; i++) {
+            boolean active = i == activeFace;
+            boolean complete = isFaceComplete(i);
+            faceButtons[i].setText(SHORT_NAMES[i] + (complete ? " ✓" : ""));
+            faceButtons[i].setTextColor(active ? Color.rgb(7, 30, 45) : Color.rgb(239, 249, 255));
+            int fill = active ? CubeState.colorArgb(CubeState.FACE_ORDER.charAt(i)) : Color.argb(64, 238, 250, 255);
+            faceButtons[i].setBackground(gradient(new int[]{lighten(fill, 12), fill}, 15,
+                    active ? Color.WHITE : Color.argb(100, 215, 242, 255), active ? dp(2) : dp(1)));
+        }
+
+        for (int i = 0; i < 9; i++) {
+            int index = CubeState.stickerIndex(activeFace, i / 3, i % 3);
+            boolean center = i == 4;
+            boolean known = confirmed[index];
+            char color = cube.get(index);
+            stickerButtons[i].setEnabled(!center);
+            if (!known && !center) {
+                stickerButtons[i].setText("点我\n填写");
+                stickerButtons[i].setTextColor(Color.rgb(179, 213, 239));
+                stickerButtons[i].setBackground(gradient(new int[]{Color.argb(52, 237, 250, 255), Color.argb(34, 117, 185, 255)}, 18, Color.argb(122, 220, 243, 255), dp(1)));
+            } else {
+                stickerButtons[i].setText(center ? SHORT_NAMES[activeFace] + "\n中心" : "");
+                stickerButtons[i].setTextColor(Color.argb(215, 7, 24, 36));
+                stickerButtons[i].setBackground(stickerBackground(CubeState.colorArgb(color), center));
+            }
+        }
+
+        completionText.setText(manualEntryInProgress
+                ? "已填写 " + confirmedEditableCount() + " / 48 格 · " + (allFacesComplete() ? "录入完成，可计算解法" : "继续填写即可")
+                : "当前选择：" + colorName + " · 点格子即可改色 · 所有中心块已固定");
+        restartButton.setText(manualEntryInProgress ? "重新开始录入" : "从头录入");
+        refreshPalette();
+    }
+
+    private void refreshPalette() {
+        for (int i = 0; i < 6; i++) {
+            char color = CubeState.FACE_ORDER.charAt(i);
+            int entered = enteredColorCount(color);
+            boolean chosen = color == selectedColor;
+            int base = CubeState.colorArgb(color);
+            paletteButtons[i].setText(COLOR_NAMES[i] + "\n" + entered + " / 9" + (chosen ? "  ✓" : ""));
+            paletteButtons[i].setTextColor(color == 'U' || color == 'D' || color == 'L' ? Color.rgb(10, 29, 41) : Color.WHITE);
+            paletteButtons[i].setBackground(gradient(new int[]{lighten(base, 22), base}, 16,
+                    chosen ? Color.WHITE : Color.argb(105, 229, 247, 255), chosen ? dp(3) : dp(1)));
+        }
+    }
+
+    private boolean isFaceComplete(int face) {
+        for (int i = 0; i < 9; i++) if (!confirmed[CubeState.stickerIndex(face, i / 3, i % 3)]) return false;
+        return true;
+    }
+
+    private boolean allFacesComplete() {
+        for (int face = 0; face < 6; face++) if (!isFaceComplete(face)) return false;
+        return true;
+    }
+
+    private int confirmedEditableCount() {
+        int count = 0;
+        for (int face = 0; face < 6; face++) {
+            for (int i = 0; i < 9; i++) if (i != 4 && confirmed[CubeState.stickerIndex(face, i / 3, i % 3)]) count++;
+        }
+        return count;
+    }
+
+    private int enteredColorCount(char color) {
+        if (!manualEntryInProgress) return cube.colorCount(color);
+        int count = 0;
+        for (int index = 0; index < 54; index++) if (confirmed[index] && cube.get(index) == color) count++;
+        return count;
+    }
+
+    private String colorCounts() {
+        StringBuilder result = new StringBuilder();
+        for (int i = 0; i < 6; i++) {
+            if (result.length() > 0) result.append("  ");
+            result.append(SHORT_NAMES[i]).append("=").append(cube.colorCount(CubeState.FACE_ORDER.charAt(i)));
+        }
+        return result.toString();
     }
 
     private TextView label(String content) {
@@ -122,56 +303,24 @@ public final class FaceEditorView extends LinearLayout {
         label.setTextColor(Color.rgb(140, 223, 255));
         label.setTextSize(10);
         label.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        label.setLetterSpacing(.14f);
+        label.setLetterSpacing(.13f);
         return label;
     }
 
-    private AppCompatButton compactButton(String text) {
+    private AppCompatButton pillButton(String text) {
         AppCompatButton button = new AppCompatButton(getContext());
         button.setText(text);
-        button.setTextSize(13);
+        button.setTextSize(12);
         button.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         button.setAllCaps(false);
+        button.setGravity(Gravity.CENTER);
         button.setPadding(0, 0, 0, 0);
         return button;
     }
 
-    public void refresh() {
-        for (int i = 0; i < 6; i++) {
-            boolean active = i == activeFace;
-            faceButtons[i].setText((active ? "●  " : "") + CubeState.FACE_ORDER.charAt(i));
-            faceButtons[i].setTextColor(active ? Color.rgb(10, 30, 48) : Color.rgb(232, 246, 255));
-            faceButtons[i].setBackground(active
-                    ? gradient(new int[]{Color.rgb(153, 239, 209), Color.rgb(124, 206, 255)}, 13, Color.argb(125, 238, 255, 255), dp(1))
-                    : gradient(new int[]{Color.argb(70, 255, 255, 255), Color.argb(35, 133, 194, 255)}, 13, Color.argb(81, 212, 241, 255), dp(1)));
-        }
-        for (int i = 0; i < 9; i++) {
-            char color = cube.get(CubeState.stickerIndex(activeFace, i / 3, i % 3));
-            boolean center = i == 4;
-            stickerButtons[i].setEnabled(!center);
-            stickerButtons[i].setBackground(stickerBackground(CubeState.colorArgb(color), center));
-            stickerButtons[i].setText(center ? String.valueOf(CubeState.FACE_ORDER.charAt(activeFace)) : "");
-            stickerButtons[i].setTextColor(Color.argb(185, 8, 21, 33));
-            stickerButtons[i].setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        }
-        refreshPalette();
-    }
-
-    private void refreshPalette() {
-        for (int i = 0; i < 6; i++) {
-            char color = CubeState.FACE_ORDER.charAt(i);
-            boolean chosen = color == selectedColor;
-            paletteButtons[i].setBackground(gradient(
-                    new int[]{CubeState.colorArgb(color), lighten(CubeState.colorArgb(color), 26)},
-                    14,
-                    chosen ? Color.WHITE : Color.argb(110, 220, 242, 255),
-                    chosen ? dp(3) : dp(1)));
-        }
-    }
-
     private GradientDrawable stickerBackground(int color, boolean center) {
-        return gradient(new int[]{lighten(color, 18), color}, 16,
-                center ? Color.rgb(245, 254, 255) : Color.argb(122, 238, 251, 255), center ? dp(3) : dp(1));
+        return gradient(new int[]{lighten(color, 20), color}, 18,
+                center ? Color.WHITE : Color.argb(166, 230, 248, 255), center ? dp(3) : dp(1));
     }
 
     private GradientDrawable gradient(int[] colors, int radiusDp, int stroke, int strokeWidth) {

@@ -40,6 +40,9 @@ import java.util.concurrent.Executors;
  * 这避免了复杂光照下单帧颜色分类造成的静默错误。
  */
 public final class CameraScanDialog extends Dialog implements ImageAnalysis.Analyzer {
+    private static final String[] COLOR_NAMES = {"白色", "红色", "绿色", "黄色", "橙色", "蓝色"};
+    private static final String[] SHORT_NAMES = {"白", "红", "绿", "黄", "橙", "蓝"};
+
     public interface Listener { void onFaceCaptured(int face, char[] values); }
 
     private final LifecycleOwner lifecycleOwner;
@@ -111,7 +114,7 @@ public final class CameraScanDialog extends Dialog implements ImageAnalysis.Anal
             final int face = i;
             AppCompatButton button = new AppCompatButton(getContext());
             button.setAllCaps(false);
-            button.setText(String.valueOf(CubeState.FACE_ORDER.charAt(i)));
+            button.setText(SHORT_NAMES[i]);
             button.setTextSize(13);
             button.setTextColor(Color.rgb(242, 250, 255));
             button.setPadding(0, 0, 0, 0);
@@ -146,7 +149,7 @@ public final class CameraScanDialog extends Dialog implements ImageAnalysis.Anal
             char[] sample = latestColors.clone();
             sample[4] = CubeState.FACE_ORDER.charAt(selectedFace);
             listener.onFaceCaptured(selectedFace, sample);
-            status.setText("已保存 " + CubeState.FACE_ORDER.charAt(selectedFace) + " 面；可继续选择下一面或关闭。");
+            status.setText("已保存 " + COLOR_NAMES[selectedFace] + "面；可继续选择下一面或关闭。");
         });
         bottom.addView(capture, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(52)));
         AppCompatButton close = new AppCompatButton(getContext());
@@ -165,7 +168,7 @@ public final class CameraScanDialog extends Dialog implements ImageAnalysis.Anal
     }
 
     private void refreshTitle() {
-        if (faceTitle != null) faceTitle.setText("拍摄 " + CubeState.FACE_ORDER.charAt(selectedFace) + " 面");
+        if (faceTitle != null) faceTitle.setText("拍摄第 " + (selectedFace + 1) + " / 6 面 · " + COLOR_NAMES[selectedFace] + "面");
     }
 
     private GradientDrawable glassBackground(int fill, int radiusDp) {
