@@ -163,10 +163,11 @@ public final class MainActivity extends AppCompatActivity {
         FrameLayout stage = new FrameLayout(this);
         stage.setBackground(gradient(new int[]{Color.argb(42, 8, 24, 58), Color.argb(18, 255, 255, 255)}, 24, Color.argb(64, 213, 242, 255), dp(1)));
         cubeView = new Cube3DView(this);
-        cubeView.setContentDescription("可拖拽旋转浏览的三维魔方");
+        cubeView.setContentDescription("拖动魔方周围空白区域旋转视角，拖动魔方层扭动该层");
         cubeView.setTapListener(() -> cubeView.resetCamera());
+        cubeView.setDirectMoveListener(this::handleDirectMove);
         stage.addView(cubeView, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, dp(312)));
-        TextView cue = text("连续拖拽环绕 · 松手后惯性滑行 · 双击回主视角", 11, Color.rgb(190, 215, 239));
+        TextView cue = text("拖空白区域看视角 · 拖魔方层扭动 · 双击空白区域复位", 11, Color.rgb(190, 215, 239));
         cue.setGravity(Gravity.CENTER);
         cue.setBackground(gradient(new int[]{Color.argb(66, 16, 32, 66), Color.argb(28, 255, 255, 255)}, 15, Color.argb(42, 219, 242, 255), dp(1)));
         FrameLayout.LayoutParams cueParams = new FrameLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(30), Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
@@ -356,6 +357,26 @@ public final class MainActivity extends AppCompatActivity {
                     if (!solveInProgress && playStatus != null) playStatus.setText("求解器预热未完成；仍可使用随机打乱的一键逆序还原。");
                 });
             }
+        });
+    }
+
+    /** 直接拖动魔方层：先做平滑视觉动画，动画完成后再写入状态模型。 */
+    private void handleDirectMove(String move) {
+        if (cubeView == null || cubeView.isMoveAnimating()) return;
+        cancelActiveSolve(false);
+        stopPlayback();
+        modelPreviewMode = false;
+        cubeView.setFacelets(cube.facelets());
+        clearScrambleContext();
+        solutionMoves.clear();
+        playButton.setEnabled(false);
+        solutionText.setText("正在执行手势转动：" + move + "…");
+        playStatus.setText("松手后已识别为面层转动，动画完成后同步状态。 ");
+        cubeView.animateMove(move, animationDurationMs(), () -> {
+            cube.applyMove(move);
+            solutionText.setText("已完成手势转动 " + move + "，请重新计算解法。 ");
+            playStatus.setText("模型与状态已同步。 ");
+            refreshAll();
         });
     }
 

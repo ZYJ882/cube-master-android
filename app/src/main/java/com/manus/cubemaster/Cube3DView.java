@@ -50,6 +50,11 @@ public final class Cube3DView extends View {
     private long inertiaLastTime;
     private boolean orbiting;
     private Runnable tapListener;
+    public interface DirectMoveListener { void onMove(String move); }
+    private DirectMoveListener directMoveListener;
+    private StickerPolygon touchSticker;
+    private boolean layerGesture;
+    private boolean directMoveStarted;
 
     private final Runnable inertiaRunner = new Runnable() {
         @Override public void run() {
@@ -120,9 +125,11 @@ public final class Cube3DView extends View {
                     animationFace = -1;
                     animationAngle = 0f;
                     invalidate();
+                    moveAnimator = null;
                     if (listener != null) listener.onMoveCompleted();
+                } else {
+                    moveAnimator = null;
                 }
-                moveAnimator = null;
             }
         });
         moveAnimator.start();
@@ -148,6 +155,7 @@ public final class Cube3DView extends View {
     }
 
     public void setTapListener(Runnable listener) { tapListener = listener; }
+    public void setDirectMoveListener(DirectMoveListener listener) { directMoveListener = listener; }
 
     @Override protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
@@ -238,7 +246,7 @@ public final class Cube3DView extends View {
             if (i == 0) path.moveTo(point.x, point.y); else path.lineTo(point.x, point.y);
         }
         path.close();
-        return new StickerPolygon(CubeState.stickerIndex(face, row, col), path, points, depth / 4f, transformedNormal[2] > .015f);
+        return new StickerPolygon(face, row, col, CubeState.stickerIndex(face, row, col), path, points, depth / 4f, transformedNormal[2] > .015f);
     }
 
     private boolean belongsToRotatingLayer(int face, int row, int col) {
@@ -345,18 +353,36 @@ public final class Cube3DView extends View {
                 lastX = downX = event.getX();
                 lastY = downY = event.getY();
                 downTime = android.os.SystemClock.uptimeMillis();
+                touchSticker = findStickerAt(downX, downY);
+                layerGesture = touchSticker != null && !isMoveAnimating();
+                directMoveStarted = false;
                 velocityTracker = VelocityTracker.obtain();
                 velocityTracker.addMovement(event);
                 return true;
             case MotionEvent.ACTION_MOVE:
                 if (velocityTracker != null) velocityTracker.addMovement(event);
-                float dx = event.getX() - lastX;
-                float dy = event.getY() - lastY;
-                yaw += dx * .42f;
-                pitch = clamp(pitch + dy * .38f, -84f, 84f);
-                lastX = event.getX();
-                lastY = event.getY();
-                invalidate();
+                float dx = event.getX() - downX;
+                float dy = event.getY() - downY;
+                if (layerGesture && !directMoveStarted && Math.max(Math.abs(dx), Math.abs(dy)) >= dp(22)) {
+                    String move = directMoveFor(touchSticker.face, dx, dy);
+                    directMoveStarted = true;
+                    layerGesture = false;
+                    if (directMoveListener != null) {
+                        directMoveListener.onMove(move);
+                    } else {
+                        animateMove(move, 430L, null);
+                    }
+                    return true;
+                }
+                if (!layerGesture && !directMoveStarted) {
+                    float stepX = event.getX() - lastX;
+                    float stepY = event.getY() - lastY;
+                    yaw += stepX * .42f;
+                    pitch = clamp(pitch + stepY * .38f, -84f, 84f);
+                    lastX = event.getX();
+                    lastY = event.getY();
+                    invalidate();
+                }
                 return true;
             case MotionEvent.ACTION_UP:
             case MotionEvent.ACTION_CANCEL:
@@ -371,7 +397,9 @@ public final class Cube3DView extends View {
                 }
                 float drag = Math.max(Math.abs(event.getX() - downX), Math.abs(event.getY() - downY));
                 long now = android.os.SystemClock.uptimeMillis();
-                if (event.getActionMasked() == MotionEvent.ACTION_UP && drag < dp(10) && now - downTime < 280L) {
+                if (directMoveStarted) {
+                    yawVelocity = pitchVelocity = 0f;
+                } else if (!layerGesture && event.getActionMasked() == MotionEvent.ACTION_UP && drag < dp(10) && now - downTime < 280L) {
                     if (now - lastTapTime < 320L && Math.abs(event.getX() - lastTapX) < dp(22) && Math.abs(event.getY() - lastTapY) < dp(22)) {
                         resetCamera();
                         if (tapListener != null) tapListener.run();
@@ -381,14 +409,51 @@ public final class Cube3DView extends View {
                         lastTapX = event.getX();
                         lastTapY = event.getY();
                     }
-                } else {
+                } else if (!layerGesture) {
                     startInertia();
                 }
+                touchSticker = null;
+                layerGesture = false;
                 performClick();
                 return true;
             default:
                 return true;
         }
+    }
+
+    private String directMoveFor(int face, float dx, float dy) {
+        char faceName = CubeState.FACE_ORDER.charAt(face);
+        boolean positive = Math.abs(dx) >= Math.abs(dy) ? dx > 0f : dy > 0f;
+        return String.valueOf(faceName) + (positive ? "" : "'");
+    }
+
+    private StickerPolygon findStickerAt(float x, float y) {
+        float cx = getWidth() * .5f;
+        float cy = getHeight() * .505f;
+        float scale = Math.min(getWidth(), getHeight()) * .205f;
+        StickerPolygon best = null;
+        for (int face = 0; face < 6; face++) {
+            for (int row = 0; row < 3; row++) {
+                for (int col = 0; col < 3; col++) {
+                    StickerPolygon candidate = buildSticker(face, row, col, cx, cy, scale);
+                    if (candidate.visible && contains(candidate.points, x, y) && (best == null || candidate.depth > best.depth)) best = candidate;
+                }
+            }
+        }
+        return best;
+    }
+
+    private static boolean contains(PointF[] points, float x, float y) {
+        float sign = 0f;
+        for (int i = 0; i < 4; i++) {
+            PointF a = points[i];
+            PointF b = points[(i + 1) % 4];
+            float cross = (b.x - a.x) * (y - a.y) - (b.y - a.y) * (x - a.x);
+            if (Math.abs(cross) < .5f) continue;
+            if (sign == 0f) sign = Math.signum(cross);
+            else if (sign * cross < 0f) return false;
+        }
+        return true;
     }
 
     private void startInertia() {
@@ -417,12 +482,18 @@ public final class Cube3DView extends View {
     }
 
     private static final class StickerPolygon {
+        final int face;
+        final int row;
+        final int col;
         final int stickerIndex;
         final Path path;
         final PointF[] points;
         final float depth;
         final boolean visible;
-        StickerPolygon(int index, Path path, PointF[] points, float depth, boolean visible) {
+        StickerPolygon(int face, int row, int col, int index, Path path, PointF[] points, float depth, boolean visible) {
+            this.face = face;
+            this.row = row;
+            this.col = col;
             this.stickerIndex = index;
             this.path = path;
             this.points = points;

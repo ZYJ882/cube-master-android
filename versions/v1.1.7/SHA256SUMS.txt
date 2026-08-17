@@ -1,0 +1,2 @@
+5eb5369e8623848aa148c77e5f0ad7816b470e555467cf9d750a048ab2bc6045  CubeMaster-3x3-v1.1.7-layer-gesture-debug.apk
+b2d35d750237855a9789ff0be729d35dd9297f2a0e01a1a9dfd1b7de38280f1a  CubeMaster-3x3-v1.1.7-Android-Source.zip
