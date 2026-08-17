@@ -1,0 +1,2 @@
+4753258c94cc9dba2896ddb76a509ca479cb7e6d1cef1d29eda866fc5a0a3292  CubeMaster-3x3-v1.1.19-real-cfop-debug.apk
+fe16d8e442e74b28153b8e35d54c2702fd1295bd3937be4c5eca1a8b6c2030d6  CubeMaster-3x3-v1.1.19-Android-Source.zip

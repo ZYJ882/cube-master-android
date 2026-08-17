@@ -17,6 +17,7 @@
 
 | 版本 | 名称 | 主要更新 | 版本目录 |
 |---|---|---|---|
+| `v1.1.19` | 真实 CFOP 独立规划版 | 新增 Cross → F2L → OLL → PLL 独立动作内核、逐阶段主状态验证和分段动画；不是 Kociemba 步骤改名。 | [`versions/v1.1.19`](versions/v1.1.19/) |
 | `v1.1.18` | 层先法面板稳定修复版 | 修复计算真实层先法后求解面板可能消失的问题；动态重测量、12 秒有界超时和步骤规模保护。 | [`versions/v1.1.18`](versions/v1.1.18/) |
 | `v1.1.17` | 真实层先法修复版 | 移除同一解法的伪教学标签；新增独立层先法，实际完成六个分层状态目标后再进入下一阶段。 | [`versions/v1.1.17`](versions/v1.1.17/) |
 | `v1.1.16` | 多方法选择与教学路线版 | 历史版本：仅提供教学路线文字，已由 v1.1.17 替换为真实独立层先法。 | [`versions/v1.1.16`](versions/v1.1.16/) |
@@ -72,4 +73,4 @@
 
 ## Releases
 
-请从 [Releases](https://github.com/ZYJ882/cube-master-android/releases) 下载已归档版本的 APK。当前最新版本为 [`v1.1.18`](versions/v1.1.18/)。
+请从 [Releases](https://github.com/ZYJ882/cube-master-android/releases) 下载已归档版本的 APK。当前最新版本为 [`v1.1.19`](versions/v1.1.19/)。

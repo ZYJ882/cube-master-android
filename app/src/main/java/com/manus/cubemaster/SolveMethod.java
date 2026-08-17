@@ -13,7 +13,13 @@ public enum SolveMethod {
             "Layer-By-Layer",
             "逐层完成",
             "实际先完成白色底层十字、首层角块、中层棱块，再处理顶层；每一阶段均在主魔方状态上验证后才进入下一阶段。",
-            new String[]{"1. 底层十字", "2. 完成首层", "3. 完成中层", "4. 顶层十字", "5. 顶层朝向", "6. 顶层排列并复原"});
+            new String[]{"1. 底层十字", "2. 完成首层", "3. 完成中层", "4. 顶层十字", "5. 顶层朝向", "6. 顶层排列并复原"}),
+    CFOP(
+            "真实 CFOP",
+            "Cross · F2L · OLL · PLL",
+            "速度进阶",
+            "独立 CFOP 内核实际先完成十字，再以角棱配对完成 F2L，随后执行 OLL 与 PLL；每一阶段都在三维主状态上验证。",
+            new String[]{"1. Cross：底层十字", "2. F2L：四组角棱配对", "3. OLL：顶层朝向", "4. PLL：顶层排列并复原"});
 
     private final String displayName;
     private final String signature;

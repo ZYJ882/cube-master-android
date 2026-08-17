@@ -237,3 +237,40 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+---
+
+## CFOP solver core
+
+真实 CFOP（Cross → F2L → OLL → PLL）阶段内核源自并经 Android Java 适配修改自：
+
+- Divins Mathew, [`divinsmathew/CubeXdotNet-Rubiks-Cube-Solver`](https://github.com/divinsmathew/CubeXdotNet-Rubiks-Cube-Solver)
+- 原始文件：`Constants.cs`、`Cross.cs`、`F2L.cs`、`OLL.cs`、`PLL.cs`、`Tools.cs`、`FridrichSolver.cs`
+- 原始版权：Copyright (c) 2017 Divins Mathew
+- 许可证：MIT License
+
+本项目保留了原始 MIT 许可证副本 `solver/cfop/LICENSE-MIT-CubeX.txt`。Android 适配增加了当前 `URFDLB` 面片状态映射、固定三维坐标动作投影、Cross/F2L/OLL/PLL 阶段验证、步骤规模保护与分段动画支持；原始动作压缩函数未用于改变各阶段产生的动作。
+
+```text
+MIT License
+
+Copyright (c) 2017 Divins Mathew
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```

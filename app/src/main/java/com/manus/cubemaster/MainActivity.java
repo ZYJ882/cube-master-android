@@ -25,6 +25,7 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.AppCompatButton;
 import androidx.core.content.ContextCompat;
 
+import com.manus.cubemaster.solver.CfopSolver;
 import com.manus.cubemaster.solver.LayerByLayerSolver;
 import com.manus.cubemaster.solver.SolverFacade;
 
@@ -426,7 +427,9 @@ public final class MainActivity extends AppCompatActivity {
     }
 
     private String calculateButtonLabel() {
-        return selectedSolveMethod == SolveMethod.LAYER_BY_LAYER ? "计算真实层先法" : "计算高效解法";
+        if (selectedSolveMethod == SolveMethod.LAYER_BY_LAYER) return "计算真实层先法";
+        if (selectedSolveMethod == SolveMethod.CFOP) return "计算真实 CFOP";
+        return "计算高效解法";
     }
 
     /** 求解内容更新前后强制保留并重测量卡片，防止动态结果导致某些设备丢弃下方视图。 */
@@ -447,7 +450,7 @@ public final class MainActivity extends AppCompatActivity {
         if (selectedSolveMethod == SolveMethod.KOCIEMBA) {
             return "高效计算机解 · Kociemba 两阶段\n共 " + parsed.size() + " 步：\n" + joinMoves(parsed);
         }
-        StringBuilder out = new StringBuilder("真实入门层先法 · 每阶段已验证\n");
+        StringBuilder out = new StringBuilder(selectedSolveMethod.displayName() + " · 每阶段已验证\n");
         int total = 0;
         for (int i = 0; i < layerStages.size(); i++) {
             LayerByLayerSolver.Stage stage = layerStages.get(i);
@@ -457,7 +460,7 @@ public final class MainActivity extends AppCompatActivity {
                     .append(stage.detail()).append("\n")
                     .append(joinMoves(stage.moves())).append("\n");
         }
-        out.append("\n共 ").append(total).append(" 步；播放将严格按以上六个阶段进行。");
+        out.append("\n共 ").append(total).append(" 步；播放将严格按以上阶段进行。");
         return out.toString();
     }
 
@@ -756,9 +759,13 @@ public final class MainActivity extends AppCompatActivity {
         final SolveMethod methodAtRequest = selectedSolveMethod;
         solutionText.setText(methodAtRequest == SolveMethod.LAYER_BY_LAYER
                 ? "正在按真实层先法依次规划底层十字、首层、中层和顶层…"
+                : methodAtRequest == SolveMethod.CFOP
+                ? "正在按真实 CFOP 依次规划 Cross、F2L、OLL、PLL…"
                 : "正在使用 Kociemba 两阶段算法计算当前状态的标准解法…");
         playStatus.setText(methodAtRequest == SolveMethod.LAYER_BY_LAYER
                 ? "层先法每个阶段都会实际验证目标达成后再进入下一阶段。 "
+                : methodAtRequest == SolveMethod.CFOP
+                ? "CFOP 每个阶段都会实际验证 Cross、F2L、OLL、PLL 目标。 "
                 : "设备端两阶段搜索进行中，正在求解当前状态。 ");
         activeSolveFuture = solveExecutor.submit(() -> {
             try {
@@ -766,6 +773,10 @@ public final class MainActivity extends AppCompatActivity {
                 final List<LayerByLayerSolver.Stage> stages;
                 if (methodAtRequest == SolveMethod.LAYER_BY_LAYER) {
                     LayerByLayerSolver.Result result = LayerByLayerSolver.solve(snapshot);
+                    parsed = result.moves();
+                    stages = result.stages();
+                } else if (methodAtRequest == SolveMethod.CFOP) {
+                    CfopSolver.Result result = CfopSolver.solve(snapshot);
                     parsed = result.moves();
                     stages = result.stages();
                 } else {
@@ -811,6 +822,8 @@ public final class MainActivity extends AppCompatActivity {
             playButton.setEnabled(true);
             playStatus.setText(selectedSolveMethod == SolveMethod.LAYER_BY_LAYER
                     ? "真实层先法已就绪：将按底层十字、首层、中层、顶层的顺序播放。"
+                    : selectedSolveMethod == SolveMethod.CFOP
+                    ? "真实 CFOP 已就绪：将按 Cross、F2L、OLL、PLL 的顺序播放。"
                     : "Kociemba 解法已就绪，可单步查看或自动还原。");
         }
     }
