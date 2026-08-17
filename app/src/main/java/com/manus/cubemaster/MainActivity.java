@@ -30,12 +30,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 import java.util.concurrent.CancellationException;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
 /** 液态玻璃版主界面：三维浏览、相机辅助录入、离线求解与动态还原。 */
 public final class MainActivity extends AppCompatActivity {
@@ -166,6 +163,7 @@ public final class MainActivity extends AppCompatActivity {
         cubeView = new Cube3DView(this);
         cubeView.setContentDescription("拖动魔方周围空白区域旋转视角，拖动魔方层扭动该层");
         cubeView.setTapListener(() -> cubeView.resetCamera());
+        cubeView.setLayerGestureListener(this::beginDirectLayerGesture);
         cubeView.setDirectMoveListener(this::handleDirectMove);
         stage.addView(cubeView, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, dp(312)));
 
@@ -428,6 +426,17 @@ public final class MainActivity extends AppCompatActivity {
         });
     }
 
+    /** 用户已实际拖动模型层：立刻退出计算/还原，避免手动操作仍显示“正在准备解法”。 */
+    private void beginDirectLayerGesture() {
+        cancelActiveSolve(false);
+        stopPlayback();
+        modelPreviewMode = false;
+        solutionMoves.clear();
+        if (playButton != null) playButton.setEnabled(false);
+        if (solutionText != null) solutionText.setText("正在手动扭动魔方层；松手后会决定回弹或完成转动。 ");
+        if (playStatus != null) playStatus.setText("手动操作已取消计算；只有点击“计算高效解法”才会再次求解。 ");
+    }
+
     /** 跟手预览已吸附到 90° 后由 Cube3DView 回调；此处只提交一次状态，绝不重复播放动画。 */
     private void handleDirectMove(String move) {
         if (cubeView == null) return;
@@ -531,6 +540,16 @@ public final class MainActivity extends AppCompatActivity {
             playStatus.setText(editor.entryStatus());
             return;
         }
+        if (warmUpFuture != null && !warmUpFuture.isDone()) {
+            solutionText.setText("求解器正在后台准备，尚未开始计算。准备完成后请再次点击“计算高效解法”。");
+            playStatus.setText("您仍可继续手动扭动、上色或识图；当前不会自动求解。 ");
+            return;
+        }
+        if (cube.normalizeOrientationForSolver()) {
+            modelPreviewMode = false;
+            refreshAll();
+            toast("已按中心块方向重新对齐，现可计算解法。 ");
+        }
         String snapshot = cube.facelets();
         String validation = SolverFacade.validate(snapshot);
         if (validation != null) {
@@ -560,20 +579,17 @@ public final class MainActivity extends AppCompatActivity {
                 if (snapshot.equals(scrambleState) && !lastScrambleMoves.isEmpty()) {
                     parsed = inverseMoves(lastScrambleMoves);
                 } else {
-                    if (warmUpFuture != null) warmUpFuture.get(75, TimeUnit.SECONDS);
                     String solution = SolverFacade.solve(snapshot);
                     parsed = CubeState.parseMoves(solution);
                 }
                 runOnUiThread(() -> finishSolveSuccess(requestId, snapshot, parsed));
-            } catch (InterruptedException | CancellationException e) {
-                Thread.currentThread().interrupt();
-                runOnUiThread(() -> finishSolveCancelled(requestId));
-            } catch (TimeoutException e) {
-                runOnUiThread(() -> finishSolveFailure(requestId, "求解器预热超过 75 秒。请稍后重试，或重新启动应用。"));
-            } catch (ExecutionException e) {
-                runOnUiThread(() -> finishSolveFailure(requestId, "求解器预热失败：" + messageOf(e.getCause())));
             } catch (Throwable e) {
-                runOnUiThread(() -> finishSolveFailure(requestId, messageOf(e)));
+                if (e instanceof CancellationException || Thread.currentThread().isInterrupted()) {
+                    Thread.currentThread().interrupt();
+                    runOnUiThread(() -> finishSolveCancelled(requestId));
+                } else {
+                    runOnUiThread(() -> finishSolveFailure(requestId, messageOf(e)));
+                }
             }
         });
     }
@@ -735,6 +751,10 @@ public final class MainActivity extends AppCompatActivity {
             solutionText.setText("当前录入未完成，不能开始还原。\n" + editor.entryStatus());
             toast("请先完成逐面上色。");
             return false;
+        }
+        if (cube.normalizeOrientationForSolver()) {
+            modelPreviewMode = false;
+            refreshAll();
         }
         String validation = SolverFacade.validate(cube.facelets());
         if (validation != null) {

@@ -2,20 +2,31 @@ package com.manus.cubemaster;
 
 import android.graphics.Color;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * 三阶魔方的面片状态。面片顺序严格采用 URFDLB，兼容内置两阶段求解器。
  */
 public final class CubeState {
     public static final String FACE_ORDER = "URFDLB";
+    /** 外层 6 面与中层 3 切片。M/E/S 分别遵循 L/D/F 的标准方向。 */
+    public static final String MOVE_ORDER = "URFDLBMES";
     public static final String SOLVED = "UUUUUUUUURRRRRRRRRFFFFFFFFFDDDDDDDDDLLLLLLLLLBBBBBBBBB";
 
     private static final int[][][] DESCRIPTORS = new int[54][2][3];
-    private static final int[][] MOVE_MAPS = new int[6][54];
+    private static final int[][] MOVE_MAPS = new int[9][54];
+    private static final int[][] WHOLE_ROTATION_MAPS = new int[3][54];
+    private static final int[][] MOVE_AXES = {
+            {0, 1, 0}, {1, 0, 0}, {0, 0, 1}, {0, -1, 0}, {-1, 0, 0}, {0, 0, -1},
+            {-1, 0, 0}, {0, -1, 0}, {0, 0, 1}
+    };
+    private static final int[] MOVE_LAYERS = {1, 1, 1, 1, 1, 1, 0, 0, 0};
 
     static {
         for (int face = 0; face < 6; face++) {
@@ -29,20 +40,29 @@ public final class CubeState {
                 }
             }
         }
-        for (int face = 0; face < 6; face++) {
-            int[] axis = normalFor(face);
-            for (int i = 0; i < 54; i++) {
-                MOVE_MAPS[face][i] = i;
-            }
+        for (int move = 0; move < MOVE_ORDER.length(); move++) {
+            int[] axis = MOVE_AXES[move];
+            int layer = MOVE_LAYERS[move];
+            for (int i = 0; i < 54; i++) MOVE_MAPS[move][i] = i;
             for (int source = 0; source < 54; source++) {
                 int[] p = DESCRIPTORS[source][0];
                 int[] n = DESCRIPTORS[source][1];
-                if (dot(p, axis) == 1) {
+                if (dot(p, axis) == layer) {
                     int[] rotatedP = rotateClockwise(p, axis);
                     int[] rotatedN = rotateClockwise(n, axis);
                     int destination = descriptorIndex(rotatedP, rotatedN);
-                    MOVE_MAPS[face][destination] = source;
+                    MOVE_MAPS[move][destination] = source;
                 }
+            }
+        }
+        int[][] wholeAxes = {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
+        for (int rotation = 0; rotation < wholeAxes.length; rotation++) {
+            int[] axis = wholeAxes[rotation];
+            for (int source = 0; source < 54; source++) {
+                int[] rotatedP = rotateClockwise(DESCRIPTORS[source][0], axis);
+                int[] rotatedN = rotateClockwise(DESCRIPTORS[source][1], axis);
+                int destination = descriptorIndex(rotatedP, rotatedN);
+                WHOLE_ROTATION_MAPS[rotation][destination] = source;
             }
         }
     }
@@ -109,10 +129,10 @@ public final class CubeState {
     public void applyMove(String notation) {
         if (notation == null || notation.trim().isEmpty()) return;
         String move = notation.trim().toUpperCase();
-        int face = FACE_ORDER.indexOf(move.charAt(0));
-        if (face < 0) throw new IllegalArgumentException("不支持的转动：" + notation);
+        int moveIndex = MOVE_ORDER.indexOf(move.charAt(0));
+        if (moveIndex < 0) throw new IllegalArgumentException("不支持的转动：" + notation);
         int turns = move.endsWith("2") ? 2 : (move.endsWith("'") ? 3 : 1);
-        for (int i = 0; i < turns; i++) applyQuarter(face);
+        for (int i = 0; i < turns; i++) applyQuarter(moveIndex);
     }
 
     public void applyMoves(List<String> moves) {
@@ -127,6 +147,58 @@ public final class CubeState {
             if (part.matches("[URFDLB](2|')?")) moves.add(part);
         }
         return moves;
+    }
+
+    /** 返回标准求解器所需的中心块朝向；中层切片后可用于将整体视图重新对齐。 */
+    public String normalizeForSolver() {
+        String start = facelets();
+        if (hasStandardCenters(start)) return start;
+        ArrayDeque<String> queue = new ArrayDeque<>();
+        Set<String> visited = new HashSet<>();
+        queue.add(start);
+        visited.add(start);
+        while (!queue.isEmpty()) {
+            String state = queue.removeFirst();
+            if (hasStandardCenters(state)) return state;
+            for (int rotation = 0; rotation < 3; rotation++) {
+                String next = applyMap(state, WHOLE_ROTATION_MAPS[rotation]);
+                if (visited.add(next)) queue.addLast(next);
+            }
+        }
+        return start;
+    }
+
+    public boolean normalizeOrientationForSolver() {
+        String normalized = normalizeForSolver();
+        if (normalized.equals(facelets())) return false;
+        setFacelets(normalized);
+        return true;
+    }
+
+    public static int[] rotationAxisForMove(char move) {
+        int index = MOVE_ORDER.indexOf(Character.toUpperCase(move));
+        if (index < 0) throw new IllegalArgumentException("不支持的转动：" + move);
+        return MOVE_AXES[index].clone();
+    }
+
+    public static int rotationLayerForMove(char move) {
+        int index = MOVE_ORDER.indexOf(Character.toUpperCase(move));
+        if (index < 0) throw new IllegalArgumentException("不支持的转动：" + move);
+        return MOVE_LAYERS[index];
+    }
+
+    private static boolean hasStandardCenters(String state) {
+        for (int face = 0; face < FACE_ORDER.length(); face++) {
+            if (state.charAt(face * 9 + 4) != FACE_ORDER.charAt(face)) return false;
+        }
+        return true;
+    }
+
+    private static String applyMap(String state, int[] map) {
+        char[] before = state.toCharArray();
+        char[] after = new char[54];
+        for (int destination = 0; destination < 54; destination++) after[destination] = before[map[destination]];
+        return new String(after);
     }
 
     public static int stickerIndex(int face, int row, int col) {

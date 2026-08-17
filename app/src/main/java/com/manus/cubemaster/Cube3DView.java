@@ -25,12 +25,15 @@ import java.util.List;
  */
 public final class Cube3DView extends View {
     public interface MoveAnimationListener { void onMoveCompleted(); }
+    /** 手指已越过拖动死区并被识别为层转时触发。 */
+    public interface LayerGestureListener { void onLayerGestureStarted(); }
 
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint shadowPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private String facelets = CubeState.SOLVED;
     private String animationFacelets;
-    private int animationFace = -1;
+    /** 正在预览或播放的标准转动，可为 U/R/F/D/L/B 或 M/E/S。 */
+    private char animationMove = 0;
     private float animationAngle = 0f;
     private ValueAnimator moveAnimator;
     private ValueAnimator layerSettleAnimator;
@@ -54,6 +57,7 @@ public final class Cube3DView extends View {
     private Runnable tapListener;
     public interface DirectMoveListener { void onMove(String move); }
     private DirectMoveListener directMoveListener;
+    private LayerGestureListener layerGestureListener;
     private StickerPolygon touchSticker;
     private int gestureMode;
     private boolean layerDirectionLocked;
@@ -108,13 +112,13 @@ public final class Cube3DView extends View {
 
     /** 以标准记号动画显示单个转动；模型状态由回调完成后再提交。 */
     public void animateMove(String move, long durationMs, MoveAnimationListener listener) {
-        if (move == null || !move.matches("[URFDLB](2|')?")) {
+        if (move == null || !move.matches("[URFDLBMES](2|')?")) {
             if (listener != null) listener.onMoveCompleted();
             return;
         }
         cancelMoveAnimation();
         animationFacelets = facelets;
-        animationFace = CubeState.FACE_ORDER.indexOf(move.charAt(0));
+        animationMove = move.charAt(0);
         float targetAngle = move.endsWith("2") ? 180f : (move.endsWith("'") ? -90f : 90f);
         moveAnimator = ValueAnimator.ofFloat(0f, targetAngle);
         moveAnimator.setDuration(Math.max(130L, durationMs));
@@ -130,7 +134,7 @@ public final class Cube3DView extends View {
                 if (!cancelled) {
                     facelets = nextFacelets(animationFacelets, move);
                     animationFacelets = null;
-                    animationFace = -1;
+                    animationMove = 0;
                     animationAngle = 0f;
                     invalidate();
                     moveAnimator = null;
@@ -205,6 +209,7 @@ public final class Cube3DView extends View {
 
     public void setTapListener(Runnable listener) { tapListener = listener; }
     public void setDirectMoveListener(DirectMoveListener listener) { directMoveListener = listener; }
+    public void setLayerGestureListener(LayerGestureListener listener) { layerGestureListener = listener; }
 
     @Override protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
@@ -276,8 +281,8 @@ public final class Cube3DView extends View {
                 break;
         }
 
-        if (animationFace >= 0 && belongsToRotatingLayer(face, row, col)) {
-            int[] axisInt = normalForFace(animationFace);
+        if (animationMove != 0 && belongsToRotatingLayer(face, row, col)) {
+            int[] axisInt = CubeState.rotationAxisForMove(animationMove);
             float[] axis = new float[]{axisInt[0], axisInt[1], axisInt[2]};
             for (int i = 0; i < 4; i++) vertices[i] = rotateMove(vertices[i], axis, animationAngle);
             normal = rotateMove(normal, axis, animationAngle);
@@ -300,8 +305,8 @@ public final class Cube3DView extends View {
 
     private boolean belongsToRotatingLayer(int face, int row, int col) {
         int[] p = stickerCenter(face, row, col);
-        int[] axis = normalForFace(animationFace);
-        return p[0] * axis[0] + p[1] * axis[1] + p[2] * axis[2] > 0;
+        int[] axis = CubeState.rotationAxisForMove(animationMove);
+        return p[0] * axis[0] + p[1] * axis[1] + p[2] * axis[2] == CubeState.rotationLayerForMove(animationMove);
     }
 
     private static int[] stickerCenter(int face, int row, int col) {
@@ -467,13 +472,14 @@ public final class Cube3DView extends View {
         float distance = (float) Math.hypot(dx, dy);
         if (!layerDirectionLocked) {
             if (distance < dp(8)) return;
+            if (layerGestureListener != null) layerGestureListener.onLayerGestureStarted();
             layerHorizontal = Math.abs(dx) >= Math.abs(dy);
             layerDirectionLocked = true;
             animationFacelets = facelets;
-            animationFace = touchSticker.face;
         }
         float primary = layerHorizontal ? dx : dy;
-        pendingLayerMove = directMoveFor(touchSticker.face, primary);
+        pendingLayerMove = directMoveFor(touchSticker, layerHorizontal, primary);
+        animationMove = pendingLayerMove.charAt(0);
         float sign = pendingLayerMove.endsWith("'") ? -1f : 1f;
         float magnitude = clamp(Math.abs(primary) * 90f / dp(116), 0f, 82f);
         animationAngle = sign * magnitude;
@@ -481,9 +487,28 @@ public final class Cube3DView extends View {
         invalidate();
     }
 
-    private String directMoveFor(int face, float primaryDrag) {
-        char faceName = CubeState.FACE_ORDER.charAt(face);
-        return String.valueOf(faceName) + (primaryDrag >= 0f ? "" : "'");
+    /**
+     * 从可见贴纸的行列推导实际层：横向拖动优先按行选择 U/E/D 或 F/S/B；
+     * 纵向拖动优先按列选择 L/M/R 或 B/S/F。这样顶层、中层与外层都可直接触控。
+     */
+    private String directMoveFor(StickerPolygon sticker, boolean horizontal, float primaryDrag) {
+        char move;
+        if (horizontal) {
+            if (sticker.face == 0 || sticker.face == 3) move = rowMove(sticker.row, 'B', 'S', 'F');
+            else move = rowMove(sticker.row, 'U', 'E', 'D');
+        } else {
+            if (sticker.face == 1 || sticker.face == 4) move = columnMove(sticker.col, 'B', 'S', 'F');
+            else move = columnMove(sticker.col, 'L', 'M', 'R');
+        }
+        return String.valueOf(move) + (primaryDrag >= 0f ? "" : "'");
+    }
+
+    private static char rowMove(int row, char top, char middle, char bottom) {
+        return row == 0 ? top : (row == 1 ? middle : bottom);
+    }
+
+    private static char columnMove(int col, char left, char middle, char right) {
+        return col == 0 ? left : (col == 1 ? middle : right);
     }
 
     private void finishLayerGesture(boolean released) {
@@ -502,7 +527,7 @@ public final class Cube3DView extends View {
 
     /** 将跟手预览平滑吸附到 0° 或 ±90°，再在回调时提交状态。 */
     private void settleLayerTo(float targetAngle, String moveToCommit) {
-        if (animationFace < 0) return;
+        if (animationMove == 0) return;
         final float start = animationAngle;
         final String committedMove = moveToCommit;
         layerSettleAnimator = ValueAnimator.ofFloat(start, targetAngle);
@@ -533,7 +558,7 @@ public final class Cube3DView extends View {
 
     private void clearLayerPreview() {
         animationFacelets = null;
-        animationFace = -1;
+        animationMove = 0;
         animationAngle = 0f;
         layerDirectionLocked = false;
         pendingLayerMove = null;

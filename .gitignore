@@ -16,3 +16,4 @@ solved-state-out/
 solver-regression-out/
 state-guard-out/
 third_party_review/
+SliceMoveTest.java
