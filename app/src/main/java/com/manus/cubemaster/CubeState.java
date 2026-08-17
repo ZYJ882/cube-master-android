@@ -56,6 +56,14 @@ public final class CubeState {
                     MOVE_MAPS[move][destination] = source;
                 }
             }
+            // 标准求解坐标系中六个中心块定义面的朝向。M/E/S 只移动中层边块；
+            // 若把中心贴纸也循环，会得到一个无法由整体视角旋转归一化的“伪中心置换”状态。
+            if (move >= 6) {
+                for (int face = 0; face < 6; face++) {
+                    int center = face * 9 + 4;
+                    MOVE_MAPS[move][center] = center;
+                }
+            }
         }
         int[][] wholeAxes = {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
         for (int rotation = 0; rotation < wholeAxes.length; rotation++) {

@@ -1,0 +1,2 @@
+2b6598917900a134e1e9ef5b33b385f5a1a9f0111fc88d9b68753011d81bac84  CubeMaster-3x3-v1.1.20-roux-zz-debug.apk
+d0414e8a31590b79d3a42ca92125bf77ab21f71440abfdd3091a978015ba5401  CubeMaster-3x3-v1.1.20-Android-Source.zip

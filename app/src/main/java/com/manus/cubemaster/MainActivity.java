@@ -27,7 +27,9 @@ import androidx.core.content.ContextCompat;
 
 import com.manus.cubemaster.solver.CfopSolver;
 import com.manus.cubemaster.solver.LayerByLayerSolver;
+import com.manus.cubemaster.solver.RouxSolver;
 import com.manus.cubemaster.solver.SolverFacade;
+import com.manus.cubemaster.solver.ZzSolver;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -761,11 +763,19 @@ public final class MainActivity extends AppCompatActivity {
                 ? "正在按真实层先法依次规划底层十字、首层、中层和顶层…"
                 : methodAtRequest == SolveMethod.CFOP
                 ? "正在按真实 CFOP 依次规划 Cross、F2L、OLL、PLL…"
+                : methodAtRequest == SolveMethod.ROUX
+                ? "正在按真实 Roux 依次规划 First Block、Second Block、CMLL、LSE…"
+                : methodAtRequest == SolveMethod.ZZ
+                ? "正在按真实 ZZ 依次规划 EOLine、受限 ZZ-F2L、OCLL、PLL…"
                 : "正在使用 Kociemba 两阶段算法计算当前状态的标准解法…");
         playStatus.setText(methodAtRequest == SolveMethod.LAYER_BY_LAYER
                 ? "层先法每个阶段都会实际验证目标达成后再进入下一阶段。 "
                 : methodAtRequest == SolveMethod.CFOP
                 ? "CFOP 每个阶段都会实际验证 Cross、F2L、OLL、PLL 目标。 "
+                : methodAtRequest == SolveMethod.ROUX
+                ? "Roux 将逐段验证两个 1×2×3 块、CMLL 与仅 M/U 的 LSE。 "
+                : methodAtRequest == SolveMethod.ZZ
+                ? "ZZ 将逐段验证全棱定向、DF/DB Line、受限 F2L、OCLL 与 PLL。 "
                 : "设备端两阶段搜索进行中，正在求解当前状态。 ");
         activeSolveFuture = solveExecutor.submit(() -> {
             try {
@@ -777,6 +787,14 @@ public final class MainActivity extends AppCompatActivity {
                     stages = result.stages();
                 } else if (methodAtRequest == SolveMethod.CFOP) {
                     CfopSolver.Result result = CfopSolver.solve(snapshot);
+                    parsed = result.moves();
+                    stages = result.stages();
+                } else if (methodAtRequest == SolveMethod.ROUX) {
+                    RouxSolver.Result result = RouxSolver.solve(snapshot);
+                    parsed = result.moves();
+                    stages = result.stages();
+                } else if (methodAtRequest == SolveMethod.ZZ) {
+                    ZzSolver.Result result = ZzSolver.solve(snapshot);
                     parsed = result.moves();
                     stages = result.stages();
                 } else {
@@ -824,6 +842,10 @@ public final class MainActivity extends AppCompatActivity {
                     ? "真实层先法已就绪：将按底层十字、首层、中层、顶层的顺序播放。"
                     : selectedSolveMethod == SolveMethod.CFOP
                     ? "真实 CFOP 已就绪：将按 Cross、F2L、OLL、PLL 的顺序播放。"
+                    : selectedSolveMethod == SolveMethod.ROUX
+                    ? "真实 Roux 已就绪：将按两个 Block、CMLL、M/U LSE 的顺序播放。"
+                    : selectedSolveMethod == SolveMethod.ZZ
+                    ? "真实 ZZ 已就绪：将按 EOLine、受限 F2L、OCLL、PLL 的顺序播放。"
                     : "Kociemba 解法已就绪，可单步查看或自动还原。");
         }
     }
@@ -972,16 +994,16 @@ public final class MainActivity extends AppCompatActivity {
 
     private String playbackStepLabel(int ordinal, String move) {
         String prefix = "第 " + ordinal + " / " + solutionMoves.size() + " 步：" + move;
-        if (selectedSolveMethod != SolveMethod.LAYER_BY_LAYER) return prefix;
+        if (layerStages.isEmpty()) return prefix;
         int consumed = 0;
         for (int i = 0; i < layerStages.size(); i++) {
             consumed += layerStages.get(i).moves().size();
             if (ordinal <= consumed) return prefix + "  ·  阶段 " + (i + 1) + "：" + layerStages.get(i).title();
         }
-        return prefix + "  ·  真实层先法";
+        return prefix + "  ·  " + selectedSolveMethod.displayName();
     }
 
-    /** 仅播放已针对当前完整状态独立计算并校验过的高效解或真实层先法解。 */
+    /** 仅播放已针对当前完整状态独立计算并校验过的解法步骤。 */
     private boolean ensureCanRestore() {
         if (cube.hasUnknownStickers()) {
             stopPlayback();

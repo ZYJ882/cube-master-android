@@ -19,7 +19,19 @@ public enum SolveMethod {
             "Cross · F2L · OLL · PLL",
             "速度进阶",
             "独立 CFOP 内核实际先完成十字，再以角棱配对完成 F2L，随后执行 OLL 与 PLL；每一阶段都在三维主状态上验证。",
-            new String[]{"1. Cross：底层十字", "2. F2L：四组角棱配对", "3. OLL：顶层朝向", "4. PLL：顶层排列并复原"});
+            new String[]{"1. Cross：底层十字", "2. F2L：四组角棱配对", "3. OLL：顶层朝向", "4. PLL：顶层排列并复原"}),
+    ROUX(
+            "真实 Roux",
+            "First Block · Second Block · CMLL · LSE",
+            "块构建进阶",
+            "独立受约束搜索先构建左右两个 1×2×3 块，随后完成 CMLL，最后仅用 M/U 完成 LSE；每阶段均验证块和最后层不变量。",
+            new String[]{"1. First Block：左侧 1×2×3 块", "2. Second Block：右侧 1×2×3 块", "3. CMLL：顶层四角", "4. LSE：M/U 最后六棱并复原"}),
+    ZZ(
+            "真实 ZZ",
+            "EOLine · ZZ-F2L · OCLL · PLL",
+            "棱定向进阶",
+            "独立受约束搜索先完成全部棱定向与 DF/DB 线；后续 F2L、OCLL 和 PLL 仅使用 R/L/U，并逐段验证。",
+            new String[]{"1. EOLine：全棱定向 + DF/DB Line", "2. ZZ-F2L：受限 R/L/U 角棱对", "3. OCLL：顶层角块朝向", "4. PLL：顶层排列并复原"});
 
     private final String displayName;
     private final String signature;

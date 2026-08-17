@@ -274,3 +274,41 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+
+---
+
+## Roux / ZZ constrained-stage search structure
+
+Roux 与 ZZ 的独立阶段规划器中，投影坐标、动作转移和组合剪枝表的设计参考并经 Android Java 重新实现自：
+
+- Torjus Iveland, [`torjusti/cube-solver`](https://github.com/torjusti/cube-solver)
+- 参考文件：`src/Search.js`、`src/MoveTable.js`、`src/PruningTable.js`、`src/coordinates.js`、`src/solvers/EOLineSolver.js`、`src/solvers/firstBlockSolver.js`
+- 原始版权：Copyright (c) 2017 - 2023 Torjus Iveland
+- 许可证：MIT License
+
+本项目没有打包或执行参考项目的 JavaScript 代码。`StageSearch.java` 按本项目 `CubieCube`/`CubeState` 约定重新实现了受约束 IDA*、块投影、棱/角朝向投影和组合 Block 剪枝表；`RouxSolver.java` 与 `ZzSolver.java` 增加了主状态阶段不变量验证和 Android 分段动画输出。完整原始许可证副本位于 `app/src/main/java/com/manus/cubemaster/solver/LICENSE-MIT-cube-solver.txt`。
+
+```text
+MIT License
+
+Copyright (c) 2017 - 2023 Torjus Iveland
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
