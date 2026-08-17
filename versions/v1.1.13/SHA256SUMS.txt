@@ -1,0 +1,2 @@
+9cadf73dfff6418deb7e66d052bc060ccfd48a1634ce1477407ad83eb8f9c084  CubeMaster-3x3-v1.1.13-instant-restore-debug.apk
+f7035efcd225bd6f5d48daadb1fdb295ef18dd25732690b431d6f401cd7fa207  CubeMaster-3x3-v1.1.13-Android-Source.zip

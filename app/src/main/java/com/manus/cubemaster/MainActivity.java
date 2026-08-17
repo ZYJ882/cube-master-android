@@ -43,6 +43,10 @@ public final class MainActivity extends AppCompatActivity {
     private final ExecutorService warmUpExecutor = Executors.newSingleThreadExecutor();
     private final List<String> solutionMoves = new ArrayList<>();
     private final List<String> lastScrambleMoves = new ArrayList<>();
+    /** 用户随机打乱或手动扭层的操作历史；可立即反向播放，不依赖两阶段求解器。 */
+    private final List<String> reversibleMoves = new ArrayList<>();
+    private String reversibleBaseState;
+    private boolean immediateReverseReady = false;
     private final Random random = new Random();
     private Future<?> warmUpFuture;
     private Future<?> activeSolveFuture;
@@ -429,10 +433,14 @@ public final class MainActivity extends AppCompatActivity {
     private void beginDirectLayerGesture() {
         cancelActiveSolve(false);
         stopPlayback();
-        solutionMoves.clear();
-        if (playButton != null) playButton.setEnabled(false);
-        if (solutionText != null) solutionText.setText("正在手动扭动魔方层；松手后会决定回弹或完成转动。 ");
-        if (playStatus != null) playStatus.setText("手动操作已取消计算；只有点击“计算高效解法”才会再次求解。 ");
+        if (!immediateReverseReady) {
+            solutionMoves.clear();
+            if (playButton != null) playButton.setEnabled(false);
+        }
+        if (solutionText != null) solutionText.setText(immediateReverseReady
+                ? "正在手动扭动魔方层；此前操作的即时反向路线会在松手后自动更新。"
+                : "正在手动扭动魔方层；松手后会决定回弹或完成转动。 ");
+        if (playStatus != null) playStatus.setText("手动操作已取消计算；层转完成后可立即使用反向路线还原。 ");
     }
 
     /** 跟手预览已吸附到 90° 后由 Cube3DView 回调；此处只提交一次状态，绝不重复播放动画。 */
@@ -442,12 +450,12 @@ public final class MainActivity extends AppCompatActivity {
         stopPlayback();
         modelPreviewMode = false;
         clearScrambleContext();
-        solutionMoves.clear();
-        playButton.setEnabled(false);
+        String stateBeforeMove = cube.facelets();
         cube.applyMove(move);
         if (editor != null) editor.applyLiveMove(move);
-        solutionText.setText("已完成手势转动 " + move + "，请重新计算解法。 ");
-        playStatus.setText("跟手扭层已吸附完成，模型与状态已同步。 ");
+        appendReversibleMove(stateBeforeMove, move);
+        solutionText.setText("已完成手势转动 " + move + "；已保留 " + solutionMoves.size() + " 步反向路线，可直接点击“开始还原”。 ");
+        playStatus.setText("跟手扭层已吸附完成；即时还原不等待求解器准备。 ");
         refreshAll();
     }
 
@@ -455,12 +463,13 @@ public final class MainActivity extends AppCompatActivity {
         cancelActiveSolve(false);
         stopPlayback();
         modelPreviewMode = false;
+        clearScrambleContext();
+        String stateBeforeMove = cube.facelets();
         cube.applyMove(move);
         if (editor != null) editor.applyLiveMove(move);
-        clearScrambleContext();
-        solutionMoves.clear();
-        solutionText.setText("状态已手动改变，请重新计算解法。");
-        playButton.setEnabled(false);
+        appendReversibleMove(stateBeforeMove, move);
+        solutionText.setText("已手动转动 " + move + "；已保留 " + solutionMoves.size() + " 步反向路线，可直接点击“开始还原”。 ");
+        playStatus.setText("即时还原已就绪，不等待求解器准备。 ");
         refreshAll();
     }
 
@@ -470,6 +479,8 @@ public final class MainActivity extends AppCompatActivity {
         modelPreviewMode = false;
         cube.reset();
         lastScrambleMoves.clear();
+        clearImmediateReverseContext();
+        reversibleBaseState = cube.facelets();
         char previousFace = 0;
         int previousAxis = -1;
         for (int i = 0; i < 22; i++) {
@@ -482,14 +493,12 @@ public final class MainActivity extends AppCompatActivity {
             int modifier = random.nextInt(3);
             String move = String.valueOf(face) + (modifier == 1 ? "2" : modifier == 2 ? "'" : "");
             lastScrambleMoves.add(move);
+            reversibleMoves.add(move);
             cube.applyMove(move);
         }
         scrambleState = cube.facelets();
         if (editor != null) editor.adoptLiveState(cube);
-        solutionMoves.clear();
-        solutionMoves.addAll(inverseMoves(lastScrambleMoves));
-        playbackIndex = 0;
-        beforePlayback = scrambleState;
+        prepareImmediateReversePlayback();
         solutionText.setText("已生成 22 步合法打乱：\n" + joinMoves(lastScrambleMoves) + "\n\n已保留可逆路线（" + solutionMoves.size() + " 步），可直接开始还原。");
         playButton.setEnabled(true);
         playStatus.setText("打乱仅由合法面转动组成，保证可还原；已禁用同面和同轴连续转动。");
@@ -503,6 +512,7 @@ public final class MainActivity extends AppCompatActivity {
         cube.reset();
         if (editor != null) editor.adoptLiveState(cube);
         clearScrambleContext();
+        clearImmediateReverseContext();
         solutionMoves.clear();
         solutionText.setText("魔方已重置为复原状态。\n现在可以扫描真实魔方，或直接随机打乱。");
         playButton.setEnabled(false);
@@ -516,6 +526,7 @@ public final class MainActivity extends AppCompatActivity {
         cancelActiveSolve(false);
         stopPlayback();
         clearScrambleContext();
+        clearImmediateReverseContext();
         solutionMoves.clear();
         playbackIndex = 0;
         cube.setFacelets(editor.liveFacelets());
@@ -549,8 +560,13 @@ public final class MainActivity extends AppCompatActivity {
             return;
         }
         if (warmUpFuture != null && !warmUpFuture.isDone()) {
-            solutionText.setText("求解器正在后台准备，尚未开始计算。准备完成后请再次点击“计算高效解法”。");
-            playStatus.setText("您仍可继续手动扭动、上色或识图；当前不会自动求解。 ");
+            solutionText.setText(immediateReverseReady
+                    ? "求解器正在后台准备，暂不能计算全新解法；但当前手动层转已有反向路线，可直接点击“开始还原”。"
+                    : "求解器正在后台准备，尚未开始计算。准备完成后请再次点击“计算高效解法”。");
+            playStatus.setText(immediateReverseReady
+                    ? "即时反向还原已就绪，不等待求解器准备。"
+                    : "您仍可继续手动扭动、上色或识图；当前不会自动求解。 ");
+            if (immediateReverseReady && playButton != null) playButton.setEnabled(true);
             return;
         }
         if (cube.normalizeOrientationForSolver()) {
@@ -568,6 +584,7 @@ public final class MainActivity extends AppCompatActivity {
             return;
         }
         if (SolverFacade.isSolved(snapshot)) {
+            clearImmediateReverseContext();
             solutionMoves.clear();
             solutionText.setText("魔方已经复原，无需再执行还原步骤。");
             playButton.setEnabled(false);
@@ -612,6 +629,7 @@ public final class MainActivity extends AppCompatActivity {
             solutionText.setText("魔方状态已变化，请重新计算。");
             return;
         }
+        clearImmediateReverseContext();
         solutionMoves.clear();
         solutionMoves.addAll(parsed);
         playbackIndex = 0;
@@ -632,8 +650,11 @@ public final class MainActivity extends AppCompatActivity {
         solveInProgress = false;
         activeSolveFuture = null;
         solveButton.setText("计算高效解法");
-        solutionText.setText("已取消计算。您可以继续编辑、打乱，或在求解器预热完成后重试。");
-        playStatus.setText("计算未占用界面。 ");
+        solutionText.setText(immediateReverseReady
+                ? "已取消计算；仍可直接播放当前手动层转的反向路线。"
+                : "已取消计算。您可以继续编辑、打乱，或在求解器预热完成后重试。");
+        if (immediateReverseReady && playButton != null) playButton.setEnabled(true);
+        playStatus.setText(immediateReverseReady ? "即时反向还原已就绪。" : "计算未占用界面。 ");
     }
 
     private void finishSolveFailure(long requestId, String error) {
@@ -641,8 +662,13 @@ public final class MainActivity extends AppCompatActivity {
         solveInProgress = false;
         activeSolveFuture = null;
         solveButton.setText("计算高效解法");
-        solutionText.setText("求解未完成：" + error);
-        playStatus.setText("请检查上色状态；随机打乱可直接使用“开始还原”。");
+        solutionText.setText(immediateReverseReady
+                ? "求解未完成：" + error + "\n当前手动层转仍可直接反向还原。"
+                : "求解未完成：" + error);
+        if (immediateReverseReady && playButton != null) playButton.setEnabled(true);
+        playStatus.setText(immediateReverseReady
+                ? "即时反向还原已就绪，不受本次求解失败影响。"
+                : "请检查上色状态；随机打乱可直接使用“开始还原”。");
     }
 
     private void cancelActiveSolve(boolean showMessage) {
@@ -661,6 +687,29 @@ public final class MainActivity extends AppCompatActivity {
     private void clearScrambleContext() {
         lastScrambleMoves.clear();
         scrambleState = null;
+    }
+
+    /** 追加一项真实手动层转，并把它的逆操作立即作为可播放路线。 */
+    private void appendReversibleMove(String stateBeforeMove, String move) {
+        if (reversibleMoves.isEmpty()) reversibleBaseState = stateBeforeMove;
+        reversibleMoves.add(move);
+        prepareImmediateReversePlayback();
+    }
+
+    /** 随机打乱与手动扭层均走此处：不调用求解器，不校验灰色格，直接按历史倒放。 */
+    private void prepareImmediateReversePlayback() {
+        solutionMoves.clear();
+        solutionMoves.addAll(inverseMoves(reversibleMoves));
+        playbackIndex = 0;
+        beforePlayback = cube.facelets();
+        immediateReverseReady = !solutionMoves.isEmpty();
+        if (playButton != null) playButton.setEnabled(immediateReverseReady);
+    }
+
+    private void clearImmediateReverseContext() {
+        reversibleMoves.clear();
+        reversibleBaseState = null;
+        immediateReverseReady = false;
     }
 
     private List<String> inverseMoves(List<String> source) {
@@ -694,6 +743,7 @@ public final class MainActivity extends AppCompatActivity {
             if (!ensureCanRestore()) return;
             if (playbackIndex >= solutionMoves.size()) {
                 cube.setFacelets(beforePlayback == null ? cube.facelets() : beforePlayback);
+                if (editor != null) editor.adoptLiveState(cube);
                 playbackIndex = 0;
                 refreshAll();
                 if (!ensureCanRestore()) return;
@@ -711,7 +761,9 @@ public final class MainActivity extends AppCompatActivity {
             if (playbackIndex >= solutionMoves.size()) {
                 playing = false;
                 playButton.setText("再次演示");
-                playStatus.setText("已完成还原。魔方已回到复原状态。");
+                playStatus.setText(immediateReverseReady
+                        ? "已完成即时反向还原，已回到操作前状态。"
+                        : "已完成还原。魔方已回到复原状态。");
                 refreshAll();
                 return;
             }
@@ -722,6 +774,7 @@ public final class MainActivity extends AppCompatActivity {
                 if (!playing) return;
                 cube.applyMove(move);
                 if (editor != null) editor.applyLiveMove(move);
+                if (immediateReverseReady && !reversibleMoves.isEmpty()) reversibleMoves.remove(reversibleMoves.size() - 1);
                 playbackIndex++;
                 refreshAll();
                 handler.postDelayed(this, interMoveDelayMs());
@@ -730,12 +783,13 @@ public final class MainActivity extends AppCompatActivity {
     };
 
     private void stepPlayback() {
-        if (solutionMoves.isEmpty()) { toast("请先计算解法。"); return; }
+        if (solutionMoves.isEmpty()) { toast("请先计算解法或完成一次手动层转。"); return; }
         if (cubeView != null && cubeView.isMoveAnimating()) return;
         if (!ensureCanRestore()) return;
         stopPlayback();
         if (playbackIndex >= solutionMoves.size()) {
             cube.setFacelets(beforePlayback == null ? cube.facelets() : beforePlayback);
+            if (editor != null) editor.adoptLiveState(cube);
             playbackIndex = 0;
             refreshAll();
         }
@@ -745,17 +799,21 @@ public final class MainActivity extends AppCompatActivity {
         cubeView.animateMove(move, animationDurationMs(), () -> {
             cube.applyMove(move);
             if (editor != null) editor.applyLiveMove(move);
+            if (immediateReverseReady && !reversibleMoves.isEmpty()) reversibleMoves.remove(reversibleMoves.size() - 1);
             playbackIndex++;
             refreshAll();
             if (playbackIndex >= solutionMoves.size()) {
                 playButton.setText("再次演示");
-                playStatus.setText("已完成最后一步。再次演示可从头播放。 ");
+                playStatus.setText(immediateReverseReady
+                        ? "已完成即时反向还原，已回到操作前状态。再次演示可从头播放。"
+                        : "已完成最后一步。再次演示可从头播放。 ");
             }
         });
     }
 
-    /** 在播放前以及每步播放前检查主魔方；灰色未知格允许操作但不可开始还原。 */
+    /** 在播放前以及每步播放前检查主魔方；即时逆序只复放用户已执行的合法层转，不依赖完整录入。 */
     private boolean ensureCanRestore() {
+        if (immediateReverseReady) return true;
         if (cube.hasUnknownStickers()) {
             stopPlayback();
             playStatus.setText("还原已拦截：还有 " + cube.unknownStickerCount() + " 个灰色未填格。 ");
