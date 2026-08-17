@@ -149,10 +149,10 @@ public final class MainActivity extends AppCompatActivity {
         chip.setPadding(dp(9), 0, dp(9), 0);
         chip.setBackground(gradient(new int[]{Color.argb(74, 107, 166, 255), Color.argb(42, 235, 255, 255)}, 14, Color.argb(72, 224, 247, 255), dp(1)));
         meta.addView(chip, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(28)));
-        AppCompatButton refreshModel = glassAction("刷新上色", Color.argb(78, 121, 216, 255), Color.rgb(235, 250, 255));
+        AppCompatButton refreshModel = glassAction("同步上色", Color.argb(78, 121, 216, 255), Color.rgb(235, 250, 255));
         refreshModel.setTextSize(10);
-        refreshModel.setContentDescription("同步上色到三维魔方");
-        refreshModel.setOnClickListener(v -> syncEditorPreviewTo3D());
+        refreshModel.setContentDescription("将下方上色同步到三维主魔方");
+        refreshModel.setOnClickListener(v -> syncColorToLiveCube());
         LinearLayout.LayoutParams refreshParams = new LinearLayout.LayoutParams(dp(82), dp(28));
         refreshParams.setMargins(dp(6), 0, 0, 0);
         meta.addView(refreshModel, refreshParams);
@@ -429,7 +429,6 @@ public final class MainActivity extends AppCompatActivity {
     private void beginDirectLayerGesture() {
         cancelActiveSolve(false);
         stopPlayback();
-        exitColorPreviewToRealState(null);
         solutionMoves.clear();
         if (playButton != null) playButton.setEnabled(false);
         if (solutionText != null) solutionText.setText("正在手动扭动魔方层；松手后会决定回弹或完成转动。 ");
@@ -446,6 +445,7 @@ public final class MainActivity extends AppCompatActivity {
         solutionMoves.clear();
         playButton.setEnabled(false);
         cube.applyMove(move);
+        if (editor != null) editor.applyLiveMove(move);
         solutionText.setText("已完成手势转动 " + move + "，请重新计算解法。 ");
         playStatus.setText("跟手扭层已吸附完成，模型与状态已同步。 ");
         refreshAll();
@@ -456,6 +456,7 @@ public final class MainActivity extends AppCompatActivity {
         stopPlayback();
         modelPreviewMode = false;
         cube.applyMove(move);
+        if (editor != null) editor.applyLiveMove(move);
         clearScrambleContext();
         solutionMoves.clear();
         solutionText.setText("状态已手动改变，请重新计算解法。");
@@ -484,6 +485,7 @@ public final class MainActivity extends AppCompatActivity {
             cube.applyMove(move);
         }
         scrambleState = cube.facelets();
+        if (editor != null) editor.adoptLiveState(cube);
         solutionMoves.clear();
         solutionMoves.addAll(inverseMoves(lastScrambleMoves));
         playbackIndex = 0;
@@ -499,6 +501,7 @@ public final class MainActivity extends AppCompatActivity {
         stopPlayback();
         modelPreviewMode = false;
         cube.reset();
+        if (editor != null) editor.adoptLiveState(cube);
         clearScrambleContext();
         solutionMoves.clear();
         solutionText.setText("魔方已重置为复原状态。\n现在可以扫描真实魔方，或直接随机打乱。");
@@ -507,31 +510,31 @@ public final class MainActivity extends AppCompatActivity {
         refreshAll();
     }
 
-    /** 下方编辑只改变独立上色草稿，不再中断真实魔方的打乱、扭层、解法或还原。 */
+    /** 下方上色与识图直接更新唯一的三维主状态；灰色未知格也保留在该状态中。 */
     private void onColorDraftEdited() {
-        if (modelPreviewMode && cubeView != null && editor != null) {
-            cubeView.setFacelets(editor.previewFaceletsFor3D());
-            if (playStatus != null) playStatus.setText("上色预览已更新；真实魔方状态仍保持不变。 ");
-        }
-        if (stateText != null && editor != null) stateText.setText(editor.entryStatus());
-    }
-
-    /** 手动同步：已确认草稿格显示颜色，尚未填写格显示灰色，不会改写真实魔方。 */
-    private void syncEditorPreviewTo3D() {
-        if (cubeView == null || editor == null) return;
+        if (editor == null) return;
+        cancelActiveSolve(false);
         stopPlayback();
-        modelPreviewMode = true;
-        cubeView.setFacelets(editor.previewFaceletsFor3D());
-        playStatus.setText("正在显示上色草稿：灰色表示未填写；真实魔方状态未改变。 ");
-        toast("已刷新上色预览；开始还原时会自动切回真实魔方。 ");
-    }
-
-    /** 仅在操作真实魔方前退出草稿预览，不清除草稿内容。 */
-    private void exitColorPreviewToRealState(String status) {
-        if (!modelPreviewMode) return;
+        clearScrambleContext();
+        solutionMoves.clear();
+        playbackIndex = 0;
+        cube.setFacelets(editor.liveFacelets());
         modelPreviewMode = false;
         if (cubeView != null) cubeView.setFacelets(cube.facelets());
-        if (status != null && playStatus != null) playStatus.setText(status);
+        if (stateText != null) stateText.setText(editor.entryStatus());
+        if (solutionText != null) solutionText.setText("上色已更新主魔方；灰色格仍可继续拖动和扭层。填满后可计算还原。 ");
+        if (playButton != null) playButton.setEnabled(false);
+        if (playStatus != null) playStatus.setText(cube.hasUnknownStickers()
+                ? "当前有 " + cube.unknownStickerCount() + " 个灰色未填格，可继续上色或手动扭层。"
+                : "颜色已完整同步，可计算解法或继续手动扭层。 ");
+        refreshAll();
+    }
+
+    /** 顶部按钮用于明确将下方当前颜色再次同步到主模型。 */
+    private void syncColorToLiveCube() {
+        if (editor == null) return;
+        onColorDraftEdited();
+        toast("已同步上色到主魔方。 ");
     }
 
     private void calculateSolution() {
@@ -540,7 +543,11 @@ public final class MainActivity extends AppCompatActivity {
             return;
         }
         stopPlayback();
-        exitColorPreviewToRealState("已退出上色预览，正在使用真实魔方计算。 ");
+        if (cube.hasUnknownStickers()) {
+            solutionText.setText("还有 " + cube.unknownStickerCount() + " 个灰色格未填写；可继续滑动魔方层，但需填满后才能计算还原。 ");
+            playStatus.setText("还原校验等待完整颜色状态。 ");
+            return;
+        }
         if (warmUpFuture != null && !warmUpFuture.isDone()) {
             solutionText.setText("求解器正在后台准备，尚未开始计算。准备完成后请再次点击“计算高效解法”。");
             playStatus.setText("您仍可继续手动扭动、上色或识图；当前不会自动求解。 ");
@@ -548,6 +555,7 @@ public final class MainActivity extends AppCompatActivity {
         }
         if (cube.normalizeOrientationForSolver()) {
             modelPreviewMode = false;
+            if (editor != null) editor.adoptLiveState(cube);
             refreshAll();
             toast("已按中心块方向重新对齐，现可计算解法。 ");
         }
@@ -713,6 +721,7 @@ public final class MainActivity extends AppCompatActivity {
             cubeView.animateMove(move, animationDurationMs(), () -> {
                 if (!playing) return;
                 cube.applyMove(move);
+                if (editor != null) editor.applyLiveMove(move);
                 playbackIndex++;
                 refreshAll();
                 handler.postDelayed(this, interMoveDelayMs());
@@ -735,6 +744,7 @@ public final class MainActivity extends AppCompatActivity {
         playStatus.setText("第 " + ordinal + " / " + solutionMoves.size() + " 步：" + move);
         cubeView.animateMove(move, animationDurationMs(), () -> {
             cube.applyMove(move);
+            if (editor != null) editor.applyLiveMove(move);
             playbackIndex++;
             refreshAll();
             if (playbackIndex >= solutionMoves.size()) {
@@ -744,13 +754,21 @@ public final class MainActivity extends AppCompatActivity {
         });
     }
 
-    /** 在播放前以及每步播放前仅检查真实魔方的颜色、中心块、朝向与奇偶性。 */
+    /** 在播放前以及每步播放前检查主魔方；灰色未知格允许操作但不可开始还原。 */
     private boolean ensureCanRestore() {
-        exitColorPreviewToRealState("已退出上色预览，正在还原真实魔方。 ");
-        if (cube.normalizeOrientationForSolver()) {
+        if (cube.hasUnknownStickers()) {
+            stopPlayback();
+            playStatus.setText("还原已拦截：还有 " + cube.unknownStickerCount() + " 个灰色未填格。 ");
+            solutionText.setText("请继续上色或识图补全灰色格后，再计算并开始还原。 ");
+            toast("灰色格尚未填写，暂不能还原。");
+            return false;
+        }
+                    if (cube.normalizeOrientationForSolver()) {
             modelPreviewMode = false;
+            if (editor != null) editor.adoptLiveState(cube);
             refreshAll();
         }
+
         String validation = SolverFacade.validate(cube.facelets());
         if (validation != null) {
             stopPlayback();

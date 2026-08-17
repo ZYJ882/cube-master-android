@@ -15,6 +15,8 @@ import java.util.Set;
  */
 public final class CubeState {
     public static final String FACE_ORDER = "URFDLB";
+    /** 尚未通过上色或识图确认的面片；三维模型显示为灰色，但不可进入求解器。 */
+    public static final char UNKNOWN = '?';
     /** 外层 6 面与中层 3 切片。M/E/S 分别遵循 L/D/F 的标准方向。 */
     public static final String MOVE_ORDER = "URFDLBMES";
     public static final String SOLVED = "UUUUUUUUURRRRRRRRRFFFFFFFFFDDDDDDDDDLLLLLLLLLBBBBBBBBB";
@@ -85,7 +87,7 @@ public final class CubeState {
         }
         for (int i = 0; i < 54; i++) {
             char color = Character.toUpperCase(facelets.charAt(i));
-            if (FACE_ORDER.indexOf(color) < 0) {
+            if (FACE_ORDER.indexOf(color) < 0 && color != UNKNOWN) {
                 throw new IllegalArgumentException("存在无法识别的面片颜色");
             }
             stickers[i] = color;
@@ -101,7 +103,7 @@ public final class CubeState {
     }
 
     public void set(int index, char color) {
-        if (index < 0 || index >= 54 || FACE_ORDER.indexOf(color) < 0) {
+        if (index < 0 || index >= 54 || (FACE_ORDER.indexOf(color) < 0 && color != UNKNOWN)) {
             throw new IllegalArgumentException("无效面片");
         }
         stickers[index] = color;
@@ -112,7 +114,7 @@ public final class CubeState {
             throw new IllegalArgumentException("无效面数据");
         }
         for (int i = 0; i < 9; i++) {
-            if (FACE_ORDER.indexOf(colors[i]) < 0) {
+            if (FACE_ORDER.indexOf(colors[i]) < 0 && colors[i] != UNKNOWN) {
                 throw new IllegalArgumentException("无效颜色");
             }
             stickers[faceIndex * 9 + i] = colors[i];
@@ -123,6 +125,17 @@ public final class CubeState {
     public int colorCount(char color) {
         int count = 0;
         for (char sticker : stickers) if (sticker == color) count++;
+        return count;
+    }
+
+    public boolean hasUnknownStickers() {
+        for (char sticker : stickers) if (sticker == UNKNOWN) return true;
+        return false;
+    }
+
+    public int unknownStickerCount() {
+        int count = 0;
+        for (char sticker : stickers) if (sticker == UNKNOWN) count++;
         return count;
     }
 
@@ -228,7 +241,7 @@ public final class CubeState {
             case 'D': return Color.rgb(250, 202, 68);  // 黄
             case 'L': return Color.rgb(247, 139, 55);  // 橙
             case 'B': return Color.rgb(66, 133, 244);  // 蓝
-            default: return Color.DKGRAY;
+            default: return Color.rgb(104, 121, 139);
         }
     }
 

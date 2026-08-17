@@ -1,0 +1,2 @@
+a30105da0f4e122e50ccad338691bfc85347b465ea8cd702b27a8a9fc4596233  CubeMaster-3x3-v1.1.12-live-state-debug.apk
+01aa2e01536edd87ae2a23ba89dfecb0f88960fc22957389976ba9c38ca301fe  CubeMaster-3x3-v1.1.12-Android-Source.zip
