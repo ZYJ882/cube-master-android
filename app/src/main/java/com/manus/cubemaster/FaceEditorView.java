@@ -78,6 +78,15 @@ public final class FaceEditorView extends LinearLayout {
         return "颜色统计：" + colorCounts();
     }
 
+    /** 供 3D 预览使用：? 表示尚未由用户填写、应显示为灰色的面片。 */
+    public String previewFaceletsFor3D() {
+        char[] preview = cube.facelets().toCharArray();
+        for (int index = 0; index < preview.length; index++) {
+            if (!confirmed[index]) preview[index] = '?';
+        }
+        return new String(preview);
+    }
+
     private void build() {
         LinearLayout heading = new LinearLayout(getContext());
         heading.setGravity(Gravity.CENTER_VERTICAL);

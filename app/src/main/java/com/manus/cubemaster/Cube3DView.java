@@ -175,7 +175,7 @@ public final class Cube3DView extends View {
             paint.setColor(Color.rgb(9, 16, 30));
             canvas.drawPath(polygon.path, paint);
             Path inset = insetPath(polygon.points, .855f);
-            paint.setColor(CubeState.colorArgb(source.charAt(polygon.stickerIndex)));
+            paint.setColor(stickerColor(source.charAt(polygon.stickerIndex)));
             canvas.drawPath(inset, paint);
             paint.setStyle(Paint.Style.STROKE);
             paint.setStrokeWidth(Math.max(1f, scale * .018f));
@@ -286,6 +286,10 @@ public final class Cube3DView extends View {
                 parallel[1] + (vector[1] - parallel[1]) * cos + cross[1] * sin,
                 parallel[2] + (vector[2] - parallel[2]) * cos + cross[2] * sin
         };
+    }
+
+    private static int stickerColor(char color) {
+        return color == '?' ? Color.rgb(104, 119, 136) : CubeState.colorArgb(color);
     }
 
     private static String nextFacelets(String state, String move) {

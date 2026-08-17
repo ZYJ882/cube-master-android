@@ -51,6 +51,8 @@ public final class MainActivity extends AppCompatActivity {
     private boolean solveInProgress = false;
     private long solveRequestId = 0L;
     private String scrambleState;
+    /** 仅在用户按下“刷新上色”后启用：未确认的面片在 3D 模型中显示为灰色。 */
+    private boolean modelPreviewMode = false;
 
     private Cube3DView cubeView;
     private FaceEditorView editor;
@@ -149,6 +151,13 @@ public final class MainActivity extends AppCompatActivity {
         chip.setPadding(dp(9), 0, dp(9), 0);
         chip.setBackground(gradient(new int[]{Color.argb(74, 107, 166, 255), Color.argb(42, 235, 255, 255)}, 14, Color.argb(72, 224, 247, 255), dp(1)));
         meta.addView(chip, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(28)));
+        AppCompatButton refreshModel = glassAction("刷新上色", Color.argb(78, 121, 216, 255), Color.rgb(235, 250, 255));
+        refreshModel.setTextSize(10);
+        refreshModel.setContentDescription("同步上色到三维魔方");
+        refreshModel.setOnClickListener(v -> syncEditorPreviewTo3D());
+        LinearLayout.LayoutParams refreshParams = new LinearLayout.LayoutParams(dp(82), dp(28));
+        refreshParams.setMargins(dp(6), 0, 0, 0);
+        meta.addView(refreshModel, refreshParams);
         hero.addView(meta, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(30)));
 
         FrameLayout stage = new FrameLayout(this);
@@ -319,6 +328,8 @@ public final class MainActivity extends AppCompatActivity {
             cube.setFace(face, values);
             editor.setActiveFace(face);
             editor.markFaceCaptured(face);
+            modelPreviewMode = false;
+            if (cubeView != null) cubeView.setFacelets(cube.facelets());
             onCubeEdited();
             String[] names = {"白色", "红色", "绿色", "黄色", "橙色", "蓝色"};
             toast("已导入" + names[face] + "面，请在下方复核颜色。");
@@ -351,6 +362,7 @@ public final class MainActivity extends AppCompatActivity {
     private void applyManualMove(String move) {
         cancelActiveSolve(false);
         stopPlayback();
+        modelPreviewMode = false;
         cube.applyMove(move);
         clearScrambleContext();
         solutionMoves.clear();
@@ -362,6 +374,7 @@ public final class MainActivity extends AppCompatActivity {
     private void scramble() {
         cancelActiveSolve(false);
         stopPlayback();
+        modelPreviewMode = false;
         cube.reset();
         lastScrambleMoves.clear();
         char previousFace = 0;
@@ -392,6 +405,7 @@ public final class MainActivity extends AppCompatActivity {
     private void resetCube() {
         cancelActiveSolve(false);
         stopPlayback();
+        modelPreviewMode = false;
         cube.reset();
         clearScrambleContext();
         solutionMoves.clear();
@@ -406,11 +420,20 @@ public final class MainActivity extends AppCompatActivity {
         stopPlayback();
         clearScrambleContext();
         solutionMoves.clear();
-        // 先同步当前颜色状态到三维模型，再刷新其余界面信息。
-        if (cubeView != null) cubeView.setFacelets(cube.facelets());
-        solutionText.setText("上色已同步到 3D 魔方。完成后将校验是否可还原。 ");
+        if (!modelPreviewMode && cubeView != null) cubeView.setFacelets(cube.facelets());
+        solutionText.setText(modelPreviewMode ? "上色已更改；按“刷新上色”即可更新灰显预览。" : "上色已更改。完成后将校验是否可还原。 ");
         playButton.setEnabled(false);
         refreshAll();
+    }
+
+    /** 手动同步：已确认格显示用户填写的颜色，尚未填写格显示灰色。 */
+    private void syncEditorPreviewTo3D() {
+        if (cubeView == null || editor == null) return;
+        stopPlayback();
+        modelPreviewMode = true;
+        cubeView.setFacelets(editor.previewFaceletsFor3D());
+        playStatus.setText("3D 上色预览已刷新：灰色表示尚未填写。 ");
+        toast("已同步上色；灰色格子尚未填写。");
     }
 
     private void calculateSolution() {
@@ -660,7 +683,7 @@ public final class MainActivity extends AppCompatActivity {
     }
 
     private void refreshAll() {
-        if (cubeView != null) cubeView.setFacelets(cube.facelets());
+        if (cubeView != null) cubeView.setFacelets(modelPreviewMode && editor != null ? editor.previewFaceletsFor3D() : cube.facelets());
         if (editor != null) editor.refresh();
         if (stateText != null) stateText.setText(editor == null ? "颜色统计：" + colorSummary() : editor.entryStatus());
         if (heroStatus != null) heroStatus.setText(cube.facelets().equals(CubeState.SOLVED) ? "SOLVED" : "ACTIVE");
