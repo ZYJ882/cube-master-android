@@ -157,7 +157,7 @@ public final class MainActivity extends AppCompatActivity {
         cubeView.setContentDescription("可拖拽旋转浏览的三维魔方");
         cubeView.setTapListener(() -> cubeView.resetCamera());
         stage.addView(cubeView, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, dp(312)));
-        TextView cue = text("拖拽以环绕浏览 · 轻点回到主视角", 11, Color.rgb(190, 215, 239));
+        TextView cue = text("连续拖拽环绕 · 松手后惯性滑行 · 双击回主视角", 11, Color.rgb(190, 215, 239));
         cue.setGravity(Gravity.CENTER);
         cue.setBackground(gradient(new int[]{Color.argb(66, 16, 32, 66), Color.argb(28, 255, 255, 255)}, 15, Color.argb(42, 219, 242, 255), dp(1)));
         FrameLayout.LayoutParams cueParams = new FrameLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(30), Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
@@ -563,39 +563,63 @@ public final class MainActivity extends AppCompatActivity {
 
     private final Runnable playbackTick = new Runnable() {
         @Override public void run() {
-            if (!playing) return;
+            if (!playing || cubeView == null || cubeView.isMoveAnimating()) return;
             if (playbackIndex >= solutionMoves.size()) {
                 playing = false;
                 playButton.setText("再次演示");
-                playStatus.setText("已完成还原。魔方应处于复原状态。");
+                playStatus.setText("已完成还原。魔方已回到复原状态。");
                 refreshAll();
                 return;
             }
-            String move = solutionMoves.get(playbackIndex++);
-            cube.applyMove(move);
-            playStatus.setText("第 " + playbackIndex + " / " + solutionMoves.size() + " 步：" + move);
-            refreshAll();
-            int delay = Math.max(95, 900 - (speedBar.getProgress() + 1) * 78);
-            handler.postDelayed(this, delay);
+            final String move = solutionMoves.get(playbackIndex);
+            final int ordinal = playbackIndex + 1;
+            playStatus.setText("第 " + ordinal + " / " + solutionMoves.size() + " 步：" + move);
+            cubeView.animateMove(move, animationDurationMs(), () -> {
+                if (!playing) return;
+                cube.applyMove(move);
+                playbackIndex++;
+                refreshAll();
+                handler.postDelayed(this, interMoveDelayMs());
+            });
         }
     };
 
     private void stepPlayback() {
         if (solutionMoves.isEmpty()) { toast("请先计算解法。"); return; }
+        if (cubeView != null && cubeView.isMoveAnimating()) return;
         stopPlayback();
         if (playbackIndex >= solutionMoves.size()) {
             cube.setFacelets(beforePlayback == null ? cube.facelets() : beforePlayback);
             playbackIndex = 0;
+            refreshAll();
         }
-        String move = solutionMoves.get(playbackIndex++);
-        cube.applyMove(move);
-        playStatus.setText("第 " + playbackIndex + " / " + solutionMoves.size() + " 步：" + move);
-        refreshAll();
-        if (playbackIndex >= solutionMoves.size()) playButton.setText("再次演示");
+        final String move = solutionMoves.get(playbackIndex);
+        final int ordinal = playbackIndex + 1;
+        playStatus.setText("第 " + ordinal + " / " + solutionMoves.size() + " 步：" + move);
+        cubeView.animateMove(move, animationDurationMs(), () -> {
+            cube.applyMove(move);
+            playbackIndex++;
+            refreshAll();
+            if (playbackIndex >= solutionMoves.size()) {
+                playButton.setText("再次演示");
+                playStatus.setText("已完成最后一步。再次演示可从头播放。 ");
+            }
+        });
+    }
+
+    private int animationDurationMs() {
+        int speed = speedBar == null ? 4 : speedBar.getProgress() + 1;
+        return Math.max(160, 710 - speed * 52);
+    }
+
+    private int interMoveDelayMs() {
+        int speed = speedBar == null ? 4 : speedBar.getProgress() + 1;
+        return Math.max(30, 150 - speed * 11);
     }
 
     private void stopPlayback() {
         handler.removeCallbacks(playbackTick);
+        if (cubeView != null) cubeView.cancelMoveAnimation();
         if (playing) playStatus.setText("还原已暂停。可继续自动还原或单步查看。");
         playing = false;
         if (playButton != null && !solutionMoves.isEmpty()) playButton.setText(playbackIndex >= solutionMoves.size() ? "再次演示" : "开始还原");
