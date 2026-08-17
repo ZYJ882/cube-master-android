@@ -79,20 +79,19 @@ public final class FaceEditorView extends LinearLayout {
         LinearLayout heading = new LinearLayout(getContext());
         heading.setGravity(Gravity.CENTER_VERTICAL);
         heading.setOrientation(VERTICAL);
-        TextView eyebrow = label("逐面录入 · 识别后校正");
-        heading.addView(eyebrow, new LayoutParams(LayoutParams.MATCH_PARENT, dp(19)));
         stepTitle = new TextView(getContext());
-        stepTitle.setTextSize(19);
+        stepTitle.setTextSize(18);
         stepTitle.setTextColor(Color.WHITE);
         stepTitle.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        heading.addView(stepTitle, new LayoutParams(LayoutParams.MATCH_PARENT, dp(30)));
-        addView(heading, new LayoutParams(LayoutParams.MATCH_PARENT, dp(51)));
+        heading.addView(stepTitle, new LayoutParams(LayoutParams.MATCH_PARENT, dp(36)));
+        addView(heading, new LayoutParams(LayoutParams.MATCH_PARENT, dp(38)));
 
         instructionText = new TextView(getContext());
         instructionText.setTextColor(Color.rgb(192, 220, 243));
-        instructionText.setTextSize(12);
-        instructionText.setLineSpacing(dp(2), 1f);
-        addView(instructionText, new LayoutParams(LayoutParams.MATCH_PARENT, dp(42)));
+        instructionText.setTextSize(11);
+        instructionText.setMaxLines(2);
+        instructionText.setLineSpacing(dp(1), 1f);
+        addView(instructionText, new LayoutParams(LayoutParams.MATCH_PARENT, dp(34)));
 
         LinearLayout faceRow = new LinearLayout(getContext());
         faceRow.setGravity(Gravity.CENTER);
@@ -101,78 +100,74 @@ public final class FaceEditorView extends LinearLayout {
             AppCompatButton button = pillButton(SHORT_NAMES[i]);
             button.setOnClickListener(v -> setActiveFace(face));
             faceButtons[i] = button;
-            faceRow.addView(button, new LinearLayout.LayoutParams(0, dp(45), 1f) {{ setMargins(dp(2), 0, dp(2), 0); }});
+            faceRow.addView(button, new LinearLayout.LayoutParams(0, dp(40), 1f) {{ setMargins(dp(2), 0, dp(2), 0); }});
         }
-        addView(faceRow, new LayoutParams(LayoutParams.MATCH_PARENT, dp(49)));
+        addView(faceRow, new LayoutParams(LayoutParams.MATCH_PARENT, dp(44)));
 
-        GridLayout grid = new GridLayout(getContext());
-        grid.setRowCount(3);
-        grid.setColumnCount(3);
-        grid.setPadding(dp(2), dp(8), dp(2), dp(5));
-        for (int i = 0; i < 9; i++) {
-            final int local = i;
-            AppCompatButton sticker = new AppCompatButton(getContext());
-            sticker.setAllCaps(false);
-            sticker.setPadding(0, 0, 0, 0);
-            sticker.setTextSize(12);
-            sticker.setOnClickListener(v -> paintSticker(local));
-            stickerButtons[i] = sticker;
-            GridLayout.LayoutParams params = new GridLayout.LayoutParams();
-            params.width = 0;
-            params.height = dp(88);
-            params.columnSpec = GridLayout.spec(local % 3, 1f);
-            params.rowSpec = GridLayout.spec(local / 3, 1f);
-            params.setMargins(dp(3), dp(3), dp(3), dp(3));
-            grid.addView(sticker, params);
+        // 固定的 3×3 小正方形：手机上不会再被权重规则拉成长条。
+        LinearLayout board = new LinearLayout(getContext());
+        board.setOrientation(VERTICAL);
+        board.setGravity(Gravity.CENTER_HORIZONTAL);
+        board.setPadding(0, dp(4), 0, dp(2));
+        for (int row = 0; row < 3; row++) {
+            LinearLayout rowView = new LinearLayout(getContext());
+            rowView.setGravity(Gravity.CENTER);
+            for (int col = 0; col < 3; col++) {
+                final int local = row * 3 + col;
+                AppCompatButton sticker = new AppCompatButton(getContext());
+                sticker.setAllCaps(false);
+                sticker.setPadding(0, 0, 0, 0);
+                sticker.setTextSize(11);
+                sticker.setOnClickListener(v -> paintSticker(local));
+                stickerButtons[local] = sticker;
+                LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(dp(62), dp(62));
+                params.setMargins(dp(3), dp(3), dp(3), dp(3));
+                rowView.addView(sticker, params);
+            }
+            board.addView(rowView, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(68)));
         }
-        addView(grid, new LayoutParams(LayoutParams.MATCH_PARENT, dp(282)));
+        addView(board, new LayoutParams(LayoutParams.MATCH_PARENT, dp(210)));
 
         completionText = new TextView(getContext());
         completionText.setTextColor(Color.rgb(194, 220, 243));
-        completionText.setTextSize(12);
+        completionText.setTextSize(11);
         completionText.setGravity(Gravity.CENTER);
-        addView(completionText, new LayoutParams(LayoutParams.MATCH_PARENT, dp(28)));
+        addView(completionText, new LayoutParams(LayoutParams.MATCH_PARENT, dp(24)));
 
-        TextView chooseLabel = label("先选颜色，再点九宫格");
-        chooseLabel.setPadding(dp(2), dp(5), 0, 0);
-        addView(chooseLabel, new LayoutParams(LayoutParams.MATCH_PARENT, dp(25)));
+        TextView chooseLabel = label("选择颜色后，点九宫格上色");
+        chooseLabel.setPadding(dp(2), dp(2), 0, 0);
+        addView(chooseLabel, new LayoutParams(LayoutParams.MATCH_PARENT, dp(20)));
 
-        GridLayout palette = new GridLayout(getContext());
-        palette.setColumnCount(3);
-        palette.setRowCount(2);
-        palette.setPadding(0, 0, 0, dp(5));
+        LinearLayout palette = new LinearLayout(getContext());
+        palette.setGravity(Gravity.CENTER);
         for (int i = 0; i < 6; i++) {
             final int colorIndex = i;
             AppCompatButton swatch = new AppCompatButton(getContext());
             swatch.setAllCaps(false);
             swatch.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-            swatch.setTextSize(12);
+            swatch.setTextSize(10);
             swatch.setPadding(0, 0, 0, 0);
             swatch.setOnClickListener(v -> { selectedColor = CubeState.FACE_ORDER.charAt(colorIndex); refresh(); });
             paletteButtons[i] = swatch;
-            GridLayout.LayoutParams params = new GridLayout.LayoutParams();
-            params.width = 0;
-            params.height = dp(58);
-            params.columnSpec = GridLayout.spec(i % 3, 1f);
-            params.rowSpec = GridLayout.spec(i / 3, 1f);
-            params.setMargins(dp(3), dp(3), dp(3), dp(3));
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(46), 1f);
+            params.setMargins(dp(2), 0, dp(2), 0);
             palette.addView(swatch, params);
         }
-        addView(palette, new LayoutParams(LayoutParams.MATCH_PARENT, dp(126)));
+        addView(palette, new LayoutParams(LayoutParams.MATCH_PARENT, dp(50)));
 
         LinearLayout footer = new LinearLayout(getContext());
         footer.setGravity(Gravity.CENTER_VERTICAL);
         restartButton = pillButton("从头录入");
         restartButton.setTextColor(Color.rgb(235, 247, 255));
         restartButton.setOnClickListener(v -> startFreshEntry());
-        footer.addView(restartButton, new LinearLayout.LayoutParams(0, dp(42), 1f));
+        footer.addView(restartButton, new LinearLayout.LayoutParams(0, dp(38), 1f));
         TextView note = new TextView(getContext());
-        note.setText("中心块固定\n无需填写");
+        note.setText("中心块已固定");
         note.setTextColor(Color.rgb(172, 205, 232));
-        note.setTextSize(11);
+        note.setTextSize(10);
         note.setGravity(Gravity.CENTER);
-        footer.addView(note, new LinearLayout.LayoutParams(dp(96), dp(42)) {{ setMargins(dp(8), 0, 0, 0); }});
-        addView(footer, new LayoutParams(LayoutParams.MATCH_PARENT, dp(46)));
+        footer.addView(note, new LinearLayout.LayoutParams(dp(90), dp(38)) {{ setMargins(dp(6), 0, 0, 0); }});
+        addView(footer, new LayoutParams(LayoutParams.MATCH_PARENT, dp(42)));
     }
 
     private void paintSticker(int local) {
