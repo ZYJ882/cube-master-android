@@ -33,6 +33,8 @@ public final class Cube3DView extends View {
     private int animationFace = -1;
     private float animationAngle = 0f;
     private ValueAnimator moveAnimator;
+    private ValueAnimator layerSettleAnimator;
+    private ValueAnimator cameraAnimator;
 
     private float yaw = -38f;
     private float pitch = -24f;
@@ -53,8 +55,13 @@ public final class Cube3DView extends View {
     public interface DirectMoveListener { void onMove(String move); }
     private DirectMoveListener directMoveListener;
     private StickerPolygon touchSticker;
-    private boolean layerGesture;
+    private int gestureMode;
+    private boolean layerDirectionLocked;
+    private boolean layerHorizontal;
+    private String pendingLayerMove;
     private boolean directMoveStarted;
+    private static final int GESTURE_ORBIT = 0;
+    private static final int GESTURE_LAYER = 1;
 
     private final Runnable inertiaRunner = new Runnable() {
         @Override public void run() {
@@ -95,7 +102,8 @@ public final class Cube3DView extends View {
     }
 
     public boolean isMoveAnimating() {
-        return moveAnimator != null && moveAnimator.isRunning();
+        return (moveAnimator != null && moveAnimator.isRunning())
+                || (layerSettleAnimator != null && layerSettleAnimator.isRunning());
     }
 
     /** 以标准记号动画显示单个转动；模型状态由回调完成后再提交。 */
@@ -141,17 +149,58 @@ public final class Cube3DView extends View {
             moveAnimator.cancel();
             moveAnimator = null;
         }
-        animationFacelets = null;
-        animationFace = -1;
-        animationAngle = 0f;
+        if (layerSettleAnimator != null) {
+            layerSettleAnimator.cancel();
+            layerSettleAnimator = null;
+        }
+        clearLayerPreview();
         invalidate();
     }
 
     public void resetCamera() {
         stopInertia();
+        if (cameraAnimator != null) cameraAnimator.cancel();
         yaw = -38f;
         pitch = -24f;
         invalidate();
+    }
+
+    /** 保存当前视角，供临时预览模式在松手后恢复。 */
+    public CameraPose captureCameraPose() { return new CameraPose(yaw, pitch); }
+
+    /** 外部控制按钮按下时调用，避免与已有惯性或复原动画竞争。 */
+    public void beginExternalCameraControl() {
+        stopInertia();
+        if (cameraAnimator != null) cameraAnimator.cancel();
+    }
+
+    /** 用增量拖动控制视角，供“3D”和“眼睛”按钮复用。 */
+    public void dragExternalCameraBy(float dx, float dy) {
+        yaw += dx * .48f;
+        pitch = clamp(pitch + dy * .42f, -84f, 84f);
+        invalidate();
+    }
+
+    /** 以短缓动回到保存的视角，用于小眼睛临时预览。 */
+    public void restoreCameraPose(CameraPose pose) {
+        if (pose == null) return;
+        stopInertia();
+        if (cameraAnimator != null) cameraAnimator.cancel();
+        final float startYaw = yaw;
+        final float startPitch = pitch;
+        cameraAnimator = ValueAnimator.ofFloat(0f, 1f);
+        cameraAnimator.setDuration(230L);
+        cameraAnimator.setInterpolator(new PathInterpolator(.2f, .72f, .2f, 1f));
+        cameraAnimator.addUpdateListener(animation -> {
+            float t = (float) animation.getAnimatedValue();
+            yaw = startYaw + (pose.yaw - startYaw) * t;
+            pitch = startPitch + (pose.pitch - startPitch) * t;
+            invalidate();
+        });
+        cameraAnimator.addListener(new AnimatorListenerAdapter() {
+            @Override public void onAnimationEnd(Animator animation) { cameraAnimator = null; }
+        });
+        cameraAnimator.start();
     }
 
     public void setTapListener(Runnable listener) { tapListener = listener; }
@@ -350,31 +399,23 @@ public final class Cube3DView extends View {
             case MotionEvent.ACTION_DOWN:
                 getParent().requestDisallowInterceptTouchEvent(true);
                 stopInertia();
+                if (cameraAnimator != null) cameraAnimator.cancel();
                 lastX = downX = event.getX();
                 lastY = downY = event.getY();
                 downTime = android.os.SystemClock.uptimeMillis();
-                touchSticker = findStickerAt(downX, downY);
-                layerGesture = touchSticker != null && !isMoveAnimating();
+                touchSticker = !isMoveAnimating() ? findStickerAt(downX, downY) : null;
+                gestureMode = touchSticker == null ? GESTURE_ORBIT : GESTURE_LAYER;
+                layerDirectionLocked = false;
+                pendingLayerMove = null;
                 directMoveStarted = false;
                 velocityTracker = VelocityTracker.obtain();
                 velocityTracker.addMovement(event);
                 return true;
             case MotionEvent.ACTION_MOVE:
                 if (velocityTracker != null) velocityTracker.addMovement(event);
-                float dx = event.getX() - downX;
-                float dy = event.getY() - downY;
-                if (layerGesture && !directMoveStarted && Math.max(Math.abs(dx), Math.abs(dy)) >= dp(22)) {
-                    String move = directMoveFor(touchSticker.face, dx, dy);
-                    directMoveStarted = true;
-                    layerGesture = false;
-                    if (directMoveListener != null) {
-                        directMoveListener.onMove(move);
-                    } else {
-                        animateMove(move, 430L, null);
-                    }
-                    return true;
-                }
-                if (!layerGesture && !directMoveStarted) {
+                if (gestureMode == GESTURE_LAYER) {
+                    updateLayerGesture(event.getX() - downX, event.getY() - downY);
+                } else {
                     float stepX = event.getX() - lastX;
                     float stepY = event.getY() - lastY;
                     yaw += stepX * .42f;
@@ -397,9 +438,10 @@ public final class Cube3DView extends View {
                 }
                 float drag = Math.max(Math.abs(event.getX() - downX), Math.abs(event.getY() - downY));
                 long now = android.os.SystemClock.uptimeMillis();
-                if (directMoveStarted) {
+                if (gestureMode == GESTURE_LAYER) {
+                    finishLayerGesture(event.getActionMasked() == MotionEvent.ACTION_UP);
                     yawVelocity = pitchVelocity = 0f;
-                } else if (!layerGesture && event.getActionMasked() == MotionEvent.ACTION_UP && drag < dp(10) && now - downTime < 280L) {
+                } else if (event.getActionMasked() == MotionEvent.ACTION_UP && drag < dp(10) && now - downTime < 280L) {
                     if (now - lastTapTime < 320L && Math.abs(event.getX() - lastTapX) < dp(22) && Math.abs(event.getY() - lastTapY) < dp(22)) {
                         resetCamera();
                         if (tapListener != null) tapListener.run();
@@ -409,11 +451,11 @@ public final class Cube3DView extends View {
                         lastTapX = event.getX();
                         lastTapY = event.getY();
                     }
-                } else if (!layerGesture) {
+                } else {
                     startInertia();
                 }
                 touchSticker = null;
-                layerGesture = false;
+                gestureMode = GESTURE_ORBIT;
                 performClick();
                 return true;
             default:
@@ -421,10 +463,81 @@ public final class Cube3DView extends View {
         }
     }
 
-    private String directMoveFor(int face, float dx, float dy) {
+    private void updateLayerGesture(float dx, float dy) {
+        float distance = (float) Math.hypot(dx, dy);
+        if (!layerDirectionLocked) {
+            if (distance < dp(8)) return;
+            layerHorizontal = Math.abs(dx) >= Math.abs(dy);
+            layerDirectionLocked = true;
+            animationFacelets = facelets;
+            animationFace = touchSticker.face;
+        }
+        float primary = layerHorizontal ? dx : dy;
+        pendingLayerMove = directMoveFor(touchSticker.face, primary);
+        float sign = pendingLayerMove.endsWith("'") ? -1f : 1f;
+        float magnitude = clamp(Math.abs(primary) * 90f / dp(116), 0f, 82f);
+        animationAngle = sign * magnitude;
+        directMoveStarted = magnitude >= 12f;
+        invalidate();
+    }
+
+    private String directMoveFor(int face, float primaryDrag) {
         char faceName = CubeState.FACE_ORDER.charAt(face);
-        boolean positive = Math.abs(dx) >= Math.abs(dy) ? dx > 0f : dy > 0f;
-        return String.valueOf(faceName) + (positive ? "" : "'");
+        return String.valueOf(faceName) + (primaryDrag >= 0f ? "" : "'");
+    }
+
+    private void finishLayerGesture(boolean released) {
+        if (!released || !layerDirectionLocked || pendingLayerMove == null) {
+            settleLayerTo(0f, null);
+            return;
+        }
+        float commitThreshold = 30f;
+        if (Math.abs(animationAngle) < commitThreshold) {
+            settleLayerTo(0f, null);
+        } else {
+            float target = pendingLayerMove.endsWith("'") ? -90f : 90f;
+            settleLayerTo(target, pendingLayerMove);
+        }
+    }
+
+    /** 将跟手预览平滑吸附到 0° 或 ±90°，再在回调时提交状态。 */
+    private void settleLayerTo(float targetAngle, String moveToCommit) {
+        if (animationFace < 0) return;
+        final float start = animationAngle;
+        final String committedMove = moveToCommit;
+        layerSettleAnimator = ValueAnimator.ofFloat(start, targetAngle);
+        layerSettleAnimator.setDuration(Math.max(110L, (long) (250L * Math.abs(targetAngle - start) / 90f)));
+        layerSettleAnimator.setInterpolator(new PathInterpolator(.15f, .78f, .16f, 1f));
+        layerSettleAnimator.addUpdateListener(animation -> {
+            animationAngle = (float) animation.getAnimatedValue();
+            invalidate();
+        });
+        layerSettleAnimator.addListener(new AnimatorListenerAdapter() {
+            private boolean cancelled;
+            @Override public void onAnimationCancel(Animator animation) { cancelled = true; }
+            @Override public void onAnimationEnd(Animator animation) {
+                layerSettleAnimator = null;
+                if (!cancelled && committedMove != null) {
+                    facelets = nextFacelets(animationFacelets, committedMove);
+                    clearLayerPreview();
+                    invalidate();
+                    if (directMoveListener != null) directMoveListener.onMove(committedMove);
+                } else {
+                    clearLayerPreview();
+                    invalidate();
+                }
+            }
+        });
+        layerSettleAnimator.start();
+    }
+
+    private void clearLayerPreview() {
+        animationFacelets = null;
+        animationFace = -1;
+        animationAngle = 0f;
+        layerDirectionLocked = false;
+        pendingLayerMove = null;
+        directMoveStarted = false;
     }
 
     private StickerPolygon findStickerAt(float x, float y) {
@@ -436,9 +549,26 @@ public final class Cube3DView extends View {
             for (int row = 0; row < 3; row++) {
                 for (int col = 0; col < 3; col++) {
                     StickerPolygon candidate = buildSticker(face, row, col, cx, cy, scale);
-                    if (candidate.visible && contains(candidate.points, x, y) && (best == null || candidate.depth > best.depth)) best = candidate;
+                    boolean hit = contains(candidate.points, x, y) || distanceToPolygon(candidate.points, x, y) <= dp(9);
+                    if (candidate.visible && hit && (best == null || candidate.depth > best.depth)) best = candidate;
                 }
             }
+        }
+        return best;
+    }
+
+    private static float distanceToPolygon(PointF[] points, float x, float y) {
+        float best = Float.MAX_VALUE;
+        for (int i = 0; i < 4; i++) {
+            PointF a = points[i];
+            PointF b = points[(i + 1) % 4];
+            float dx = b.x - a.x;
+            float dy = b.y - a.y;
+            float length2 = dx * dx + dy * dy;
+            float t = length2 == 0f ? 0f : clamp(((x - a.x) * dx + (y - a.y) * dy) / length2, 0f, 1f);
+            float px = a.x + dx * t;
+            float py = a.y + dy * t;
+            best = Math.min(best, (float) Math.hypot(x - px, y - py));
         }
         return best;
     }
@@ -479,6 +609,12 @@ public final class Cube3DView extends View {
     @Override public boolean performClick() {
         super.performClick();
         return true;
+    }
+
+    public static final class CameraPose {
+        final float yaw;
+        final float pitch;
+        CameraPose(float yaw, float pitch) { this.yaw = yaw; this.pitch = pitch; }
     }
 
     private static final class StickerPolygon {

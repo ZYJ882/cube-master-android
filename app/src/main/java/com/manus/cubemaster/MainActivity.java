@@ -9,6 +9,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.Gravity;
+import android.view.MotionEvent;
 import android.view.View;
 import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
@@ -167,7 +168,26 @@ public final class MainActivity extends AppCompatActivity {
         cubeView.setTapListener(() -> cubeView.resetCamera());
         cubeView.setDirectMoveListener(this::handleDirectMove);
         stage.addView(cubeView, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, dp(312)));
-        TextView cue = text("拖空白区域看视角 · 拖魔方层扭动 · 双击空白区域复位", 11, Color.rgb(190, 215, 239));
+
+        LinearLayout cameraControls = new LinearLayout(this);
+        cameraControls.setGravity(Gravity.CENTER_VERTICAL);
+        AppCompatButton orbitControl = glassAction("3D", Color.argb(112, 99, 205, 255), Color.WHITE);
+        orbitControl.setTextSize(11);
+        orbitControl.setContentDescription("按住拖动控制三维魔方视角");
+        bindCameraDrag(orbitControl, false);
+        cameraControls.addView(orbitControl, new LinearLayout.LayoutParams(dp(48), dp(34)));
+        AppCompatButton peekControl = glassAction("◉", Color.argb(92, 104, 232, 205), Color.WHITE);
+        peekControl.setTextSize(15);
+        peekControl.setContentDescription("按住拖动临时预览视角，松手恢复原视角");
+        bindCameraDrag(peekControl, true);
+        LinearLayout.LayoutParams peekParams = new LinearLayout.LayoutParams(dp(42), dp(34));
+        peekParams.setMargins(dp(5), 0, 0, 0);
+        cameraControls.addView(peekControl, peekParams);
+        FrameLayout.LayoutParams cameraParams = new FrameLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(34), Gravity.TOP | Gravity.END);
+        cameraParams.setMargins(0, dp(10), dp(10), 0);
+        stage.addView(cameraControls, cameraParams);
+
+        TextView cue = text("拖魔方层：跟手预览，松手吸附 · 空白区或 3D 控制视角 · ◉ 松手复原", 10, Color.rgb(190, 215, 239));
         cue.setGravity(Gravity.CENTER);
         cue.setBackground(gradient(new int[]{Color.argb(66, 16, 32, 66), Color.argb(28, 255, 255, 255)}, 15, Color.argb(42, 219, 242, 255), dp(1)));
         FrameLayout.LayoutParams cueParams = new FrameLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(30), Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
@@ -175,10 +195,58 @@ public final class MainActivity extends AppCompatActivity {
         stage.addView(cue, cueParams);
         hero.addView(stage, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(312)));
 
-        TextView brief = text("立体状态与真实面片颜色同步更新", 12, Color.rgb(177, 207, 233));
+        TextView brief = text("面层跟手转动 · 视角临时预览 · 状态与真实面片同步", 12, Color.rgb(177, 207, 233));
         brief.setPadding(dp(3), dp(10), dp(3), 0);
         hero.addView(brief, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(32)));
         return hero;
+    }
+
+    /** 将小型视角按钮绑定为按住拖动手势；临时模式在松手时用短缓动回到原视角。 */
+    private void bindCameraDrag(AppCompatButton control, boolean restoreOnRelease) {
+        control.setOnTouchListener(new View.OnTouchListener() {
+            private float lastX;
+            private float lastY;
+            private Cube3DView.CameraPose savedPose;
+            private boolean moved;
+
+            @Override public boolean onTouch(View view, MotionEvent event) {
+                if (cubeView == null) return false;
+                switch (event.getActionMasked()) {
+                    case MotionEvent.ACTION_DOWN:
+                        cubeView.beginExternalCameraControl();
+                        savedPose = restoreOnRelease ? cubeView.captureCameraPose() : null;
+                        lastX = event.getRawX();
+                        lastY = event.getRawY();
+                        moved = false;
+                        view.setPressed(true);
+                        view.getParent().requestDisallowInterceptTouchEvent(true);
+                        return true;
+                    case MotionEvent.ACTION_MOVE:
+                        float dx = event.getRawX() - lastX;
+                        float dy = event.getRawY() - lastY;
+                        if (Math.abs(dx) + Math.abs(dy) > 0.5f) {
+                            moved = true;
+                            cubeView.dragExternalCameraBy(dx, dy);
+                            lastX = event.getRawX();
+                            lastY = event.getRawY();
+                        }
+                        return true;
+                    case MotionEvent.ACTION_UP:
+                    case MotionEvent.ACTION_CANCEL:
+                        view.getParent().requestDisallowInterceptTouchEvent(false);
+                        view.setPressed(false);
+                        if (restoreOnRelease) {
+                            cubeView.restoreCameraPose(savedPose);
+                            playStatus.setText("临时视角预览结束，已恢复原视角。 ");
+                        } else if (moved) {
+                            playStatus.setText("3D 视角已调整，可继续拖动查看。 ");
+                        }
+                        return true;
+                    default:
+                        return true;
+                }
+            }
+        });
     }
 
     private View buildQuickActions() {
@@ -360,24 +428,19 @@ public final class MainActivity extends AppCompatActivity {
         });
     }
 
-    /** 直接拖动魔方层：先做平滑视觉动画，动画完成后再写入状态模型。 */
+    /** 跟手预览已吸附到 90° 后由 Cube3DView 回调；此处只提交一次状态，绝不重复播放动画。 */
     private void handleDirectMove(String move) {
-        if (cubeView == null || cubeView.isMoveAnimating()) return;
+        if (cubeView == null) return;
         cancelActiveSolve(false);
         stopPlayback();
         modelPreviewMode = false;
-        cubeView.setFacelets(cube.facelets());
         clearScrambleContext();
         solutionMoves.clear();
         playButton.setEnabled(false);
-        solutionText.setText("正在执行手势转动：" + move + "…");
-        playStatus.setText("松手后已识别为面层转动，动画完成后同步状态。 ");
-        cubeView.animateMove(move, animationDurationMs(), () -> {
-            cube.applyMove(move);
-            solutionText.setText("已完成手势转动 " + move + "，请重新计算解法。 ");
-            playStatus.setText("模型与状态已同步。 ");
-            refreshAll();
-        });
+        cube.applyMove(move);
+        solutionText.setText("已完成手势转动 " + move + "，请重新计算解法。 ");
+        playStatus.setText("跟手扭层已吸附完成，模型与状态已同步。 ");
+        refreshAll();
     }
 
     private void applyManualMove(String move) {

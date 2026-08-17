@@ -1,0 +1,2 @@
+7917f3fb49f2d398db3395c3f61eb5635c6ba9627dcf840dca4d62a41a008cbd  CubeMaster-3x3-v1.1.8-gesture-polish-debug.apk
+aec294950621190afb67ff7373431a2ec7d9a913d697d0d4f6f217f5be990acd  CubeMaster-3x3-v1.1.8-Android-Source.zip
