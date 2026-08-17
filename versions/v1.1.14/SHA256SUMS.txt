@@ -1,0 +1,2 @@
+afcf9d89dad5cfec27666bc2313b116c27bac5c1dd3ce9065d50b4954c906619  CubeMaster-3x3-v1.1.14-kociemba-debug.apk
+5bf9c011a22381aef855a1b66ce5f8e49602034c0cb9b7176cf79b967af755a2  CubeMaster-3x3-v1.1.14-Android-Source.zip
