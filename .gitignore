@@ -5,6 +5,12 @@ local.properties
 *.iml
 MapTest.java
 SolverTest.java
+SolverTimingTest.java
+SolvedStateTest.java
+ScrambleContractTest.java
 maptest-out/
 solvertest-out/
+solver-timing-out/
+solved-state-out/
+solver-regression-out/
 third_party_review/

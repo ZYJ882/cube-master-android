@@ -8,6 +8,26 @@ package com.manus.cubemaster.solver;
  */
 public class Search {
 
+    private static final String SOLVED = "UUUUUUUUURRRRRRRRRFFFFFFFFFDDDDDDDDDLLLLLLLLLBBBBBBBBB";
+    private static final int MAX_PHASE_1_DEPTH = 13;
+
+    public static final class SearchCancelledException extends RuntimeException {
+        SearchCancelledException() { super("求解已取消"); }
+    }
+
+    /** 在后台建立坐标与剪枝表，避免用户首次点击求解时长时间等待。 */
+    public static void warmUp() {
+        if (Thread.currentThread().isInterrupted()) throw new SearchCancelledException();
+        new CoordCube(new CubieCube());
+        checkInterrupted();
+    }
+
+    private static void checkInterrupted() {
+        if (Thread.currentThread().isInterrupted()) throw new SearchCancelledException();
+    }
+	
+
+
 	private static int[] ax = new int[31]; // The axis of the move
 	private static int[] po = new int[31]; // The power of the move
 
@@ -67,15 +87,20 @@ public class Search {
     }
 
 	public static synchronized String solution(String facelets) {
+        if (SOLVED.equals(facelets)) return "";
+        checkInterrupted();
 	    axisInit(facelets);
+        checkInterrupted();
 
 		minDistPhase1[1] = 1;// else failure for depth=1, n=0
 		int mv, n = 0;
 		boolean busy = false;
 		int depthPhase1 = 1;
-		// +++++++++++++++++++ com.blackwell.Main loop ++++++++++++++++++++++++++++++++++++++++++
-		do {
+					// +++++++++++++++++++ com.blackwell.Main loop ++++++++++++++++++++++++++++++++++++++++++
 			do {
+                checkInterrupted();
+				do {
+
 				if ((depthPhase1 - n > minDistPhase1[n + 1]) && !busy) {
 
                     // Initialize next move
@@ -90,8 +115,10 @@ public class Search {
 					do {// increment axis
 						if (++ax[n] > 5) {
 							if (n == 0) {
-                                depthPhase1++;
-                                ax[n] = 0;
+                                	                                depthPhase1++;
+                                    if (depthPhase1 > MAX_PHASE_1_DEPTH) return null;
+	                                ax[n] = 0;
+
                                 po[n] = 1;
                                 busy = false;
                                 break;
@@ -136,9 +163,11 @@ public class Search {
 	// Apply phase2 of algorithm and return the combined
 	// phase1 and phase2 depth. In phase2, only the moves
 	// U,D,R2,F2,L2 and B2 are allowed.
-	private synchronized static int totalDepth(int depthPhase1) {
-		int mv, d1, d2;
-		int maxDepthPhase2 = 10; // Allow only max 10 moves in phase2
+			private synchronized static int totalDepth(int depthPhase1) {
+            checkInterrupted();
+			int mv, d1, d2;
+			int maxDepthPhase2 = 12; // Permit deeper phase 2 search before returning failure
+
 		for (int i = 0; i < depthPhase1; i++) {
 			mv = 3 * ax[i] + po[i] - 1;
 			URFtoDLF[i + 1] = CoordCube.URFtoDLF_Move[URFtoDLF[i]][mv];
@@ -172,9 +201,11 @@ public class Search {
 		po[depthPhase1] = 0;
 		ax[depthPhase1] = 0;
 		minDistPhase2[n + 1] = 1;// else failure for depthPhase2=1, n=0
-		// +++++++++++++++++++ end initialization +++++++++++++++++++++++++++++++++
-		do {
+					// +++++++++++++++++++ end initialization +++++++++++++++++++++++++++++++++
 			do {
+                checkInterrupted();
+				do {
+
 				if ((depthPhase1 + depthPhase2 - n > minDistPhase2[n + 1]) && !busy) {
 
 					if (ax[n] == 0 || ax[n] == 3)// Initialize next move

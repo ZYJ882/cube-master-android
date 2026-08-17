@@ -5,7 +5,18 @@ import com.manus.cubemaster.solver.utils.Edge;
 
 /** 面向应用的离线求解器门面，包含颜色数量、方向和奇偶性校验。 */
 public final class SolverFacade {
+    private static final String SOLVED = "UUUUUUUUURRRRRRRRRFFFFFFFFFDDDDDDDDDLLLLLLLLLBBBBBBBBB";
+
     private SolverFacade() { }
+
+    /** 在界面空闲时后台初始化坐标和剪枝表。 */
+    public static void warmUp() {
+        Search.warmUp();
+    }
+
+    public static boolean isSolved(String facelets) {
+        return SOLVED.equals(facelets);
+    }
 
     public static String validate(String facelets) {
         if (facelets == null || facelets.length() != 54) return "需要完整录入 54 个面片。";
@@ -51,8 +62,9 @@ public final class SolverFacade {
     public static String solve(String facelets) {
         String error = validate(facelets);
         if (error != null) throw new IllegalArgumentException(error);
+        if (isSolved(facelets)) return "";
         String answer = Search.solution(facelets);
-        if (answer == null || answer.trim().isEmpty() || "Error".equalsIgnoreCase(answer.trim())) {
+        if (answer == null || "Error".equalsIgnoreCase(answer.trim())) {
             throw new IllegalStateException("未能计算出解法，请检查录入状态。");
         }
         return answer.trim();

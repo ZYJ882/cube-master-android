@@ -28,8 +28,13 @@ import com.manus.cubemaster.solver.SolverFacade;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /** 液态玻璃版主界面：三维浏览、相机辅助录入、离线求解与动态还原。 */
 public final class MainActivity extends AppCompatActivity {
@@ -37,8 +42,15 @@ public final class MainActivity extends AppCompatActivity {
     private final CubeState cube = new CubeState();
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final ExecutorService solveExecutor = Executors.newSingleThreadExecutor();
+    private final ExecutorService warmUpExecutor = Executors.newSingleThreadExecutor();
     private final List<String> solutionMoves = new ArrayList<>();
+    private final List<String> lastScrambleMoves = new ArrayList<>();
     private final Random random = new Random();
+    private Future<?> warmUpFuture;
+    private Future<?> activeSolveFuture;
+    private boolean solveInProgress = false;
+    private long solveRequestId = 0L;
+    private String scrambleState;
 
     private Cube3DView cubeView;
     private FaceEditorView editor;
@@ -60,6 +72,7 @@ public final class MainActivity extends AppCompatActivity {
         getWindow().setNavigationBarColor(Color.rgb(8, 15, 34));
         setContentView(buildContent());
         refreshAll();
+        startSolverWarmUp();
     }
 
     private View buildContent() {
@@ -318,9 +331,26 @@ public final class MainActivity extends AppCompatActivity {
         }
     }
 
+    private void startSolverWarmUp() {
+        warmUpFuture = warmUpExecutor.submit(() -> {
+            try {
+                SolverFacade.warmUp();
+                runOnUiThread(() -> {
+                    if (!solveInProgress && playStatus != null) playStatus.setText("求解器已就绪，可计算任意合法状态。");
+                });
+            } catch (Throwable error) {
+                runOnUiThread(() -> {
+                    if (!solveInProgress && playStatus != null) playStatus.setText("求解器预热未完成；仍可使用随机打乱的一键逆序还原。");
+                });
+            }
+        });
+    }
+
     private void applyManualMove(String move) {
+        cancelActiveSolve(false);
         stopPlayback();
         cube.applyMove(move);
+        clearScrambleContext();
         solutionMoves.clear();
         solutionText.setText("状态已手动改变，请重新计算解法。");
         playButton.setEnabled(false);
@@ -328,38 +358,51 @@ public final class MainActivity extends AppCompatActivity {
     }
 
     private void scramble() {
+        cancelActiveSolve(false);
         stopPlayback();
         cube.reset();
-        List<String> scramble = new ArrayList<>();
-        char previous = 0;
+        lastScrambleMoves.clear();
+        char previousFace = 0;
+        int previousAxis = -1;
         for (int i = 0; i < 22; i++) {
             char face;
-            do { face = CubeState.FACE_ORDER.charAt(random.nextInt(6)); } while (face == previous);
-            previous = face;
+            do {
+                face = CubeState.FACE_ORDER.charAt(random.nextInt(6));
+            } while (face == previousFace || axisOf(face) == previousAxis);
+            previousFace = face;
+            previousAxis = axisOf(face);
             int modifier = random.nextInt(3);
             String move = String.valueOf(face) + (modifier == 1 ? "2" : modifier == 2 ? "'" : "");
-            scramble.add(move);
+            lastScrambleMoves.add(move);
             cube.applyMove(move);
         }
+        scrambleState = cube.facelets();
         solutionMoves.clear();
-        solutionText.setText("已打乱：" + joinMoves(scramble));
-        playButton.setEnabled(false);
-        playStatus.setText("请点击“计算高效解法”。");
+        solutionMoves.addAll(inverseMoves(lastScrambleMoves));
+        playbackIndex = 0;
+        beforePlayback = scrambleState;
+        solutionText.setText("已生成 22 步合法打乱：\n" + joinMoves(lastScrambleMoves) + "\n\n已保留可逆路线（" + solutionMoves.size() + " 步），可直接开始还原。");
+        playButton.setEnabled(true);
+        playStatus.setText("打乱仅由合法面转动组成，保证可还原；已禁用同面和同轴连续转动。");
         refreshAll();
     }
 
     private void resetCube() {
+        cancelActiveSolve(false);
         stopPlayback();
         cube.reset();
+        clearScrambleContext();
         solutionMoves.clear();
-        solutionText.setText("魔方已重置为复原状态。\n现在可以扫描真实魔方，或直接随机打乱。 ");
+        solutionText.setText("魔方已重置为复原状态。\n现在可以扫描真实魔方，或直接随机打乱。");
         playButton.setEnabled(false);
         playStatus.setText("准备就绪");
         refreshAll();
     }
 
     private void onCubeEdited() {
+        cancelActiveSolve(false);
         stopPlayback();
+        clearScrambleContext();
         solutionMoves.clear();
         solutionText.setText("上色状态已修改，请重新计算解法。");
         playButton.setEnabled(false);
@@ -367,6 +410,10 @@ public final class MainActivity extends AppCompatActivity {
     }
 
     private void calculateSolution() {
+        if (solveInProgress) {
+            cancelActiveSolve(true);
+            return;
+        }
         stopPlayback();
         String snapshot = cube.facelets();
         String validation = SolverFacade.validate(snapshot);
@@ -376,38 +423,126 @@ public final class MainActivity extends AppCompatActivity {
             toast(validation);
             return;
         }
-        solveButton.setEnabled(false);
-        solveButton.setText("正在预计算并搜索…");
-        solutionText.setText("正在设备端计算，请稍候…");
-        playStatus.setText("首次运行会建立必要的搜索表，耗时可能稍长。");
-        solveExecutor.execute(() -> {
+        if (SolverFacade.isSolved(snapshot)) {
+            solutionMoves.clear();
+            solutionText.setText("魔方已经复原，无需再执行还原步骤。");
+            playButton.setEnabled(false);
+            playStatus.setText("当前状态已复原。");
+            return;
+        }
+
+        final long requestId = ++solveRequestId;
+        solveInProgress = true;
+        playButton.setEnabled(false);
+        solveButton.setEnabled(true);
+        solveButton.setText("取消计算");
+        solutionText.setText("正在准备解法…\n如首次预热仍未完成，可点击“取消计算”返回界面。");
+        playStatus.setText("设备端搜索进行中；随机打乱状态将优先使用已保存的可逆路线。");
+        activeSolveFuture = solveExecutor.submit(() -> {
             try {
-                String solution = SolverFacade.solve(snapshot);
-                List<String> parsed = CubeState.parseMoves(solution);
-                runOnUiThread(() -> {
-                    solveButton.setEnabled(true);
-                    solveButton.setText("重新计算高效解法");
-                    if (!snapshot.equals(cube.facelets())) {
-                        solutionText.setText("魔方状态已变化，请重新计算。");
-                        return;
-                    }
-                    solutionMoves.clear();
-                    solutionMoves.addAll(parsed);
-                    playbackIndex = 0;
-                    beforePlayback = snapshot;
-                    solutionText.setText("共 " + parsed.size() + " 步：\n" + joinMoves(parsed));
-                    playButton.setEnabled(!parsed.isEmpty());
-                    playStatus.setText(parsed.isEmpty() ? "当前已复原。" : "解法已就绪，可单步查看或自动还原。");
-                });
-            } catch (Exception e) {
-                runOnUiThread(() -> {
-                    solveButton.setEnabled(true);
-                    solveButton.setText("计算高效解法");
-                    solutionText.setText("求解失败：" + (e.getMessage() == null ? "请检查录入状态。" : e.getMessage()));
-                    playStatus.setText("未生成动画。可尝试重新扫描或手动修正颜色。");
-                });
+                final List<String> parsed;
+                if (snapshot.equals(scrambleState) && !lastScrambleMoves.isEmpty()) {
+                    parsed = inverseMoves(lastScrambleMoves);
+                } else {
+                    if (warmUpFuture != null) warmUpFuture.get(75, TimeUnit.SECONDS);
+                    String solution = SolverFacade.solve(snapshot);
+                    parsed = CubeState.parseMoves(solution);
+                }
+                runOnUiThread(() -> finishSolveSuccess(requestId, snapshot, parsed));
+            } catch (InterruptedException | CancellationException e) {
+                Thread.currentThread().interrupt();
+                runOnUiThread(() -> finishSolveCancelled(requestId));
+            } catch (TimeoutException e) {
+                runOnUiThread(() -> finishSolveFailure(requestId, "求解器预热超过 75 秒。请稍后重试，或重新启动应用。"));
+            } catch (ExecutionException e) {
+                runOnUiThread(() -> finishSolveFailure(requestId, "求解器预热失败：" + messageOf(e.getCause())));
+            } catch (Throwable e) {
+                runOnUiThread(() -> finishSolveFailure(requestId, messageOf(e)));
             }
         });
+    }
+
+    private void finishSolveSuccess(long requestId, String snapshot, List<String> parsed) {
+        if (requestId != solveRequestId) return;
+        solveInProgress = false;
+        activeSolveFuture = null;
+        solveButton.setText("重新计算高效解法");
+        if (!snapshot.equals(cube.facelets())) {
+            solutionText.setText("魔方状态已变化，请重新计算。");
+            return;
+        }
+        solutionMoves.clear();
+        solutionMoves.addAll(parsed);
+        playbackIndex = 0;
+        beforePlayback = snapshot;
+        if (parsed.isEmpty()) {
+            solutionText.setText("魔方已经复原，无需还原步骤。");
+            playButton.setEnabled(false);
+            playStatus.setText("当前状态已复原。");
+        } else {
+            solutionText.setText("共 " + parsed.size() + " 步：\n" + joinMoves(parsed));
+            playButton.setEnabled(true);
+            playStatus.setText("解法已就绪，可单步查看或自动还原。");
+        }
+    }
+
+    private void finishSolveCancelled(long requestId) {
+        if (requestId != solveRequestId) return;
+        solveInProgress = false;
+        activeSolveFuture = null;
+        solveButton.setText("计算高效解法");
+        solutionText.setText("已取消计算。您可以继续编辑、打乱，或在求解器预热完成后重试。");
+        playStatus.setText("计算未占用界面。 ");
+    }
+
+    private void finishSolveFailure(long requestId, String error) {
+        if (requestId != solveRequestId) return;
+        solveInProgress = false;
+        activeSolveFuture = null;
+        solveButton.setText("计算高效解法");
+        solutionText.setText("求解未完成：" + error);
+        playStatus.setText("请检查上色状态；随机打乱可直接使用“开始还原”。");
+    }
+
+    private void cancelActiveSolve(boolean showMessage) {
+        if (!solveInProgress) return;
+        solveRequestId++;
+        if (activeSolveFuture != null) activeSolveFuture.cancel(true);
+        activeSolveFuture = null;
+        solveInProgress = false;
+        solveButton.setText("计算高效解法");
+        if (showMessage) {
+            solutionText.setText("已取消计算。求解器会继续在后台完成预热，不会阻塞界面。 ");
+            playStatus.setText("可以继续编辑、打乱或稍后重试。");
+        }
+    }
+
+    private void clearScrambleContext() {
+        lastScrambleMoves.clear();
+        scrambleState = null;
+    }
+
+    private List<String> inverseMoves(List<String> source) {
+        List<String> inverse = new ArrayList<>();
+        for (int i = source.size() - 1; i >= 0; i--) inverse.add(inverseMove(source.get(i)));
+        return inverse;
+    }
+
+    private String inverseMove(String move) {
+        if (move.endsWith("2")) return move;
+        if (move.endsWith("'")) return move.substring(0, move.length() - 1);
+        return move + "'";
+    }
+
+    private int axisOf(char face) {
+        if (face == 'U' || face == 'D') return 0;
+        if (face == 'R' || face == 'L') return 1;
+        return 2;
+    }
+
+    private String messageOf(Throwable error) {
+        if (error == null || error.getMessage() == null || error.getMessage().trim().isEmpty()) return "请检查录入状态后重试。";
+        return error.getMessage();
     }
 
     private void togglePlayback() {
@@ -516,7 +651,10 @@ public final class MainActivity extends AppCompatActivity {
 
     @Override protected void onDestroy() {
         handler.removeCallbacksAndMessages(null);
+        if (activeSolveFuture != null) activeSolveFuture.cancel(true);
+        if (warmUpFuture != null) warmUpFuture.cancel(true);
         solveExecutor.shutdownNow();
+        warmUpExecutor.shutdownNow();
         super.onDestroy();
     }
 }
