@@ -1,0 +1,2 @@
+163854a841bbddced9e3e730ee0c921affe67846f07512ab618eaad281bba463  CubeMaster-3x3-v1.1.16-methods-debug.apk
+f3d95fdaff03499c9d25452af1798c773003ee19400e64d1a5cc46ff822e8a7b  CubeMaster-3x3-v1.1.16-Android-Source.zip

@@ -46,6 +46,8 @@ public final class MainActivity extends AppCompatActivity {
     private final ExecutorService warmUpExecutor = Executors.newSingleThreadExecutor();
     private final List<String> solutionMoves = new ArrayList<>();
     private final List<String> lastScrambleMoves = new ArrayList<>();
+    private final List<AppCompatButton> solveMethodButtons = new ArrayList<>();
+    private SolveMethod selectedSolveMethod = SolveMethod.KOCIEMBA;
     private final Random random = new Random();
     private Future<?> warmUpFuture;
     private Future<?> activeSolveFuture;
@@ -62,6 +64,7 @@ public final class MainActivity extends AppCompatActivity {
     private FaceEditorView editor;
     private TextView stateText;
     private TextView solutionText;
+    private TextView methodText;
     private TextView playStatus;
     private TextView speedLabel;
     private TextView heroStatus;
@@ -310,7 +313,31 @@ public final class MainActivity extends AppCompatActivity {
         TextView explain = text("离线搜索会校验颜色、朝向与奇偶性，再生成可播放的标准记号步骤。", 12, Color.rgb(195, 219, 241));
         explain.setPadding(0, dp(6), 0, dp(10));
         panel.addView(explain);
-        solveButton = glassAction("✦  计算高效解法", Color.rgb(149, 243, 197), Color.rgb(7, 29, 31));
+
+        TextView methodHead = text("选择还原策略", 13, Color.rgb(230, 248, 255));
+        methodHead.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        methodHead.setPadding(dp(2), dp(2), dp(2), dp(4));
+        panel.addView(methodHead);
+        HorizontalScrollView methodScroll = new HorizontalScrollView(this);
+        methodScroll.setHorizontalScrollBarEnabled(false);
+        LinearLayout methods = new LinearLayout(this);
+        for (SolveMethod method : SolveMethod.values()) {
+            AppCompatButton methodButton = glassAction(method.displayName(), Color.argb(65, 222, 246, 255), Color.WHITE);
+            methodButton.setTextSize(11);
+            methodButton.setOnClickListener(v -> selectSolveMethod(method));
+            methodButton.setTag(method);
+            solveMethodButtons.add(methodButton);
+            methods.addView(methodButton, new LinearLayout.LayoutParams(dp(124), dp(42)) {{ setMargins(0, 0, dp(6), 0); }});
+        }
+        methodScroll.addView(methods);
+        panel.addView(methodScroll, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(46)));
+        methodText = text("", 11, Color.rgb(188, 219, 243));
+        methodText.setLineSpacing(dp(2), 1f);
+        methodText.setPadding(dp(3), dp(3), dp(3), dp(9));
+        panel.addView(methodText);
+        refreshMethodSelection();
+
+        solveButton = glassAction(calculateButtonLabel(), Color.rgb(149, 243, 197), Color.rgb(7, 29, 31));
         solveButton.setTextSize(15);
         solveButton.setOnClickListener(v -> calculateSolution());
         panel.addView(solveButton, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(54)));
@@ -350,6 +377,65 @@ public final class MainActivity extends AppCompatActivity {
         playStatus.setPadding(0, dp(9), 0, 0);
         panel.addView(playStatus, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(32)));
         return panel;
+    }
+
+    private void selectSolveMethod(SolveMethod method) {
+        if (method == selectedSolveMethod) return;
+        cancelActiveSolve(false);
+        stopPlayback();
+        solutionMoves.clear();
+        playbackIndex = 0;
+        selectedSolveMethod = method;
+        if (playButton != null) playButton.setEnabled(false);
+        refreshMethodSelection();
+        if (solutionText != null) {
+            solutionText.setText("已切换至“" + method.displayName() + "”。\n"
+                    + method.description() + "\n\n点击“" + calculateButtonLabel() + "”以针对当前状态生成可播放步骤。");
+        }
+        if (playStatus != null) playStatus.setText(method.capabilityLabel() + "已选择；旧解法已清除。 ");
+    }
+
+    private void refreshMethodSelection() {
+        if (methodText != null) {
+            String source = selectedSolveMethod.hasIndependentSolver()
+                    ? "当前模式：独立求解器"
+                    : "当前模式：教学路线；动画使用经验证的 Kociemba 动作";
+            methodText.setText(selectedSolveMethod.signature() + " · " + selectedSolveMethod.audience()
+                    + "\n" + selectedSolveMethod.description()
+                    + "\n学习阶段：" + selectedSolveMethod.stageSummary()
+                    + "\n" + source);
+        }
+        for (AppCompatButton button : solveMethodButtons) {
+            Object tag = button.getTag();
+            if (!(tag instanceof SolveMethod)) continue;
+            SolveMethod method = (SolveMethod) tag;
+            boolean chosen = method == selectedSolveMethod;
+            button.setText((chosen ? "✓ " : "") + method.displayName());
+            button.setAlpha(chosen ? 1f : .64f);
+        }
+        if (solveButton != null && !solveInProgress) solveButton.setText(calculateButtonLabel());
+    }
+
+    private String calculateButtonLabel() {
+        switch (selectedSolveMethod) {
+            case LAYER_BY_LAYER: return "生成分层讲解";
+            case CFOP: return "生成 CFOP 讲解";
+            case ROUX: return "生成 Roux 路线";
+            case ZZ: return "生成 ZZ 路线";
+            case KOCIEMBA:
+            default: return "计算高效解法";
+        }
+    }
+
+    private String formatSolvedResult(List<String> parsed) {
+        String moves = joinMoves(parsed);
+        if (selectedSolveMethod.hasIndependentSolver()) {
+            return "高效计算机解 · Kociemba 两阶段\n共 " + parsed.size() + " 步：\n" + moves;
+        }
+        return selectedSolveMethod.displayName() + " · " + selectedSolveMethod.capabilityLabel()
+                + "\n" + selectedSolveMethod.description()
+                + "\n\n学习阶段：\n" + selectedSolveMethod.stageSummary()
+                + "\n\n可播放的已验证步骤（" + parsed.size() + " 步）：\n" + moves;
     }
 
     private LinearLayout sectionHead(String eyebrowText, String titleText) {
@@ -423,7 +509,7 @@ public final class MainActivity extends AppCompatActivity {
         solverInitializationFailed = false;
         if (solveButton != null && !solveInProgress) {
             solveButton.setEnabled(true);
-            solveButton.setText("计算高效解法");
+            solveButton.setText(calculateButtonLabel());
         }
         if (!solveInProgress && playStatus != null) playStatus.setText("正在加载 Kociemba 查表资源；现在点击计算会自动继续。 ");
         warmUpFuture = warmUpExecutor.submit(() -> {
@@ -434,7 +520,7 @@ public final class MainActivity extends AppCompatActivity {
                     solverTablesReady = true;
                     if (solveButton != null && !solveInProgress) {
                         solveButton.setEnabled(true);
-                        solveButton.setText("计算高效解法");
+                        solveButton.setText(calculateButtonLabel());
                     }
                     if (pendingCalculateAfterLoad && !solveInProgress) {
                         pendingCalculateAfterLoad = false;
@@ -496,8 +582,8 @@ public final class MainActivity extends AppCompatActivity {
         cube.applyMove(move);
         if (editor != null) editor.applyLiveMove(move);
         playButton.setEnabled(false);
-        solutionText.setText("已完成手势转动 " + move + "。请点击“计算高效解法”，由 Kociemba 两阶段算法求解当前状态。 ");
-        playStatus.setText("当前状态已更新，等待标准两阶段求解。 ");
+        solutionText.setText("已完成手势转动 " + move + "。请点击“" + calculateButtonLabel() + "”，生成当前选择策略的可播放步骤。 ");
+        playStatus.setText("当前状态已更新，等待所选还原策略生成。 ");
         refreshAll();
     }
 
@@ -511,8 +597,8 @@ public final class MainActivity extends AppCompatActivity {
         cube.applyMove(move);
         if (editor != null) editor.applyLiveMove(move);
         playButton.setEnabled(false);
-        solutionText.setText("已手动转动 " + move + "。请点击“计算高效解法”，由 Kociemba 两阶段算法求解当前状态。 ");
-        playStatus.setText("当前状态已更新，等待标准两阶段求解。 ");
+        solutionText.setText("已手动转动 " + move + "。请点击“" + calculateButtonLabel() + "”，生成当前选择策略的可播放步骤。 ");
+        playStatus.setText("当前状态已更新，等待所选还原策略生成。 ");
         refreshAll();
     }
 
@@ -540,8 +626,8 @@ public final class MainActivity extends AppCompatActivity {
         solutionMoves.clear();
         playbackIndex = 0;
         playButton.setEnabled(false);
-        solutionText.setText("已生成 22 步合法打乱：\n" + joinMoves(lastScrambleMoves) + "\n\n请点击“计算高效解法”，由 Kociemba 两阶段算法计算当前状态。 ");
-        playStatus.setText("打乱仅由合法面转动组成；将对当前面片状态进行标准两阶段求解。 ");
+        solutionText.setText("已生成 22 步合法打乱：\n" + joinMoves(lastScrambleMoves) + "\n\n请点击“" + calculateButtonLabel() + "”，生成当前选择策略的可播放步骤。 ");
+        playStatus.setText("打乱仅由合法面转动组成；将针对当前面片状态生成所选还原路线。 ");
         refreshAll();
     }
 
@@ -571,7 +657,7 @@ public final class MainActivity extends AppCompatActivity {
         modelPreviewMode = false;
         if (cubeView != null) cubeView.setFacelets(cube.facelets());
         if (stateText != null) stateText.setText(editor.entryStatus());
-        if (solutionText != null) solutionText.setText("上色已更新主魔方；灰色格仍可继续拖动和扭层。填满后可计算还原。 ");
+        if (solutionText != null) solutionText.setText("上色已更新主魔方；灰色格仍可继续拖动和扭层。填满后可生成所选还原路线。 ");
         if (playButton != null) playButton.setEnabled(false);
         if (playStatus != null) playStatus.setText(cube.hasUnknownStickers()
                 ? "当前有 " + cube.unknownStickerCount() + " 个灰色未填格，可继续上色或手动扭层。"
@@ -635,8 +721,12 @@ public final class MainActivity extends AppCompatActivity {
         playButton.setEnabled(false);
         solveButton.setEnabled(true);
         solveButton.setText("取消计算");
-        solutionText.setText("正在使用 Kociemba 两阶段算法计算当前状态的标准解法…");
-        playStatus.setText("设备端两阶段搜索进行中，正在求解当前状态。 ");
+        solutionText.setText(selectedSolveMethod.hasIndependentSolver()
+                ? "正在使用 Kociemba 两阶段算法计算当前状态的标准解法…"
+                : "正在为“" + selectedSolveMethod.displayName() + "”生成已验证的动作与学习讲解…");
+        playStatus.setText(selectedSolveMethod.hasIndependentSolver()
+                ? "设备端两阶段搜索进行中，正在求解当前状态。 "
+                : "动作由 Kociemba 两阶段算法计算；完成后按所选学习路线呈现。 ");
         activeSolveFuture = solveExecutor.submit(() -> {
             try {
                 final String solution = SolverFacade.solve(snapshot);
@@ -657,7 +747,7 @@ public final class MainActivity extends AppCompatActivity {
         if (requestId != solveRequestId) return;
         solveInProgress = false;
         activeSolveFuture = null;
-        solveButton.setText("重新计算高效解法");
+        solveButton.setText("重新" + calculateButtonLabel());
         if (!snapshot.equals(cube.facelets())) {
             solutionText.setText("魔方状态已变化，请重新计算。");
             return;
@@ -671,9 +761,11 @@ public final class MainActivity extends AppCompatActivity {
             playButton.setEnabled(false);
             playStatus.setText("当前状态已复原。");
         } else {
-            solutionText.setText("共 " + parsed.size() + " 步：\n" + joinMoves(parsed));
+            solutionText.setText(formatSolvedResult(parsed));
             playButton.setEnabled(true);
-            playStatus.setText("解法已就绪，可单步查看或自动还原。");
+            playStatus.setText(selectedSolveMethod.hasIndependentSolver()
+                    ? "Kociemba 解法已就绪，可单步查看或自动还原。"
+                    : selectedSolveMethod.displayName() + "讲解已就绪；动作由 Kociemba 两阶段算法验证，可单步查看或自动还原。");
         }
     }
 
@@ -681,8 +773,8 @@ public final class MainActivity extends AppCompatActivity {
         if (requestId != solveRequestId) return;
         solveInProgress = false;
         activeSolveFuture = null;
-        solveButton.setText("计算高效解法");
-        solutionText.setText("已取消两阶段搜索。您可以继续编辑、打乱，或重新计算当前状态。 ");
+        solveButton.setText(calculateButtonLabel());
+        solutionText.setText("已取消计算。您可以继续编辑、打乱，或重新生成当前选择的还原路线。 ");
         playStatus.setText("计算未占用界面。 ");
     }
 
@@ -690,8 +782,8 @@ public final class MainActivity extends AppCompatActivity {
         if (requestId != solveRequestId) return;
         solveInProgress = false;
         activeSolveFuture = null;
-        solveButton.setText("计算高效解法");
-        solutionText.setText("两阶段求解未完成：" + error);
+        solveButton.setText(calculateButtonLabel());
+        solutionText.setText("当前状态的两阶段求解未完成：" + error);
         playStatus.setText("请检查上色状态，或重新计算当前魔方状态。 ");
     }
 
@@ -701,7 +793,7 @@ public final class MainActivity extends AppCompatActivity {
         if (activeSolveFuture != null) activeSolveFuture.cancel(true);
         activeSolveFuture = null;
         solveInProgress = false;
-        solveButton.setText("计算高效解法");
+        solveButton.setText(calculateButtonLabel());
         if (showMessage) {
             solutionText.setText("已取消计算。求解器会继续在后台完成预热，不会阻塞界面。 ");
             playStatus.setText("可以继续编辑、打乱或稍后重试。");
@@ -749,13 +841,13 @@ public final class MainActivity extends AppCompatActivity {
             if (playbackIndex >= solutionMoves.size()) {
                 playing = false;
                 playButton.setText("再次演示");
-                playStatus.setText("已完成 Kociemba 两阶段解法播放；魔方已回到复原状态。 ");
+                playStatus.setText("已完成“" + selectedSolveMethod.displayName() + "”展示；魔方已回到复原状态。 ");
                 refreshAll();
                 return;
             }
             final String move = solutionMoves.get(playbackIndex);
             final int ordinal = playbackIndex + 1;
-            playStatus.setText("第 " + ordinal + " / " + solutionMoves.size() + " 步：" + move);
+            playStatus.setText(playbackStepLabel(ordinal, move));
             cubeView.animateMove(move, animationDurationMs(), () -> {
                 if (!playing) return;
                 cube.applyMove(move);
@@ -768,7 +860,7 @@ public final class MainActivity extends AppCompatActivity {
     };
 
     private void stepPlayback() {
-        if (solutionMoves.isEmpty()) { toast("请先计算当前状态的两阶段解法。 "); return; }
+        if (solutionMoves.isEmpty()) { toast("请先生成当前选择策略的可播放步骤。 "); return; }
         if (cubeView != null && cubeView.isMoveAnimating()) return;
         if (!ensureCanRestore()) return;
         stopPlayback();
@@ -788,9 +880,15 @@ public final class MainActivity extends AppCompatActivity {
             refreshAll();
             if (playbackIndex >= solutionMoves.size()) {
                 playButton.setText("再次演示");
-                playStatus.setText("已完成两阶段解法的最后一步。再次演示可从头播放。 ");
+                playStatus.setText("已完成“" + selectedSolveMethod.displayName() + "”展示的最后一步。再次演示可从头播放。 ");
             }
         });
+    }
+
+    private String playbackStepLabel(int ordinal, String move) {
+        String prefix = "第 " + ordinal + " / " + solutionMoves.size() + " 步：" + move;
+        if (selectedSolveMethod.hasIndependentSolver()) return prefix;
+        return prefix + "  ·  " + selectedSolveMethod.displayName() + "学习路线（动作由两阶段算法验证）";
     }
 
     /** 仅播放已针对当前完整状态计算并校验过的两阶段解法。 */
