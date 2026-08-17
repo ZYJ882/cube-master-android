@@ -35,6 +35,7 @@ public final class FaceEditorView extends LinearLayout {
     private TextView instructionText;
     private TextView completionText;
     private AppCompatButton restartButton;
+    private String feedback = "";
     private Listener listener;
 
     public FaceEditorView(Context context, CubeState cube) {
@@ -57,6 +58,7 @@ public final class FaceEditorView extends LinearLayout {
     public void setActiveFace(int face) {
         activeFace = Math.max(0, Math.min(5, face));
         selectedColor = CubeState.FACE_ORDER.charAt(activeFace);
+        chooseFirstAvailableColor();
         refresh();
     }
 
@@ -64,6 +66,7 @@ public final class FaceEditorView extends LinearLayout {
     public void markFaceCaptured(int face) {
         for (int i = 0; i < 9; i++) confirmed[CubeState.stickerIndex(face, i / 3, i % 3)] = true;
         if (manualEntryInProgress && allFacesComplete()) manualEntryInProgress = false;
+        chooseFirstAvailableColor();
         refresh();
     }
 
@@ -147,7 +150,7 @@ public final class FaceEditorView extends LinearLayout {
             swatch.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
             swatch.setTextSize(10);
             swatch.setPadding(0, 0, 0, 0);
-            swatch.setOnClickListener(v -> { selectedColor = CubeState.FACE_ORDER.charAt(colorIndex); refresh(); });
+            swatch.setOnClickListener(v -> selectColor(CubeState.FACE_ORDER.charAt(colorIndex)));
             paletteButtons[i] = swatch;
             LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(46), 1f);
             params.setMargins(dp(2), 0, dp(2), 0);
@@ -173,11 +176,18 @@ public final class FaceEditorView extends LinearLayout {
     private void paintSticker(int local) {
         if (local == 4) return;
         int index = CubeState.stickerIndex(activeFace, local / 3, local % 3);
+        if (!canPaint(index, selectedColor)) {
+            feedback = COLOR_NAMES[colorIndex(selectedColor)] + "已达到 9 格上限，请选择其他颜色或修改已有格子。";
+            refresh();
+            return;
+        }
         cube.set(index, selectedColor);
         confirmed[index] = true;
+        feedback = "已同步到上方 3D 魔方。";
         boolean faceNowComplete = isFaceComplete(activeFace);
         if (faceNowComplete) autoAdvance();
         if (manualEntryInProgress && allFacesComplete()) manualEntryInProgress = false;
+        chooseFirstAvailableColor();
         refresh();
         if (listener != null) listener.onCubeEdited();
     }
@@ -188,6 +198,7 @@ public final class FaceEditorView extends LinearLayout {
         for (int face = 0; face < 6; face++) confirmed[CubeState.stickerIndex(face, 1, 1)] = true;
         activeFace = 0;
         selectedColor = 'U';
+        feedback = "从白色面开始，每种颜色最多可填 9 格。";
         refresh();
         if (listener != null) listener.onCubeEdited();
     }
@@ -208,8 +219,8 @@ public final class FaceEditorView extends LinearLayout {
         String colorName = COLOR_NAMES[activeFace];
         stepTitle.setText("第 " + (activeFace + 1) + " / 6 面：" + colorName + "面");
         instructionText.setText(manualEntryInProgress
-                ? "请让「" + colorName + "中心块」朝向自己，然后按实际颜色填写周围 8 格。填完会自动进入下一面。"
-                : "识别有误时：先选择正确颜色，再点要修改的格子。若从零录入，请点下方“从头录入”。");
+                ? "请让「" + colorName + "中心块」朝向自己，按实际颜色填写周围 8 格。每种颜色最多 9 格，填完自动进入下一面。"
+                : "识别有误时：选择未满 9 格的颜色，再点要修改的格子；修改会立即同步到上方 3D 魔方。");
 
         for (int i = 0; i < 6; i++) {
             boolean active = i == activeFace;
@@ -238,9 +249,10 @@ public final class FaceEditorView extends LinearLayout {
             }
         }
 
-        completionText.setText(manualEntryInProgress
+        String progress = manualEntryInProgress
                 ? "已填写 " + confirmedEditableCount() + " / 48 格 · " + (allFacesComplete() ? "录入完成，可计算解法" : "继续填写即可")
-                : "当前选择：" + colorName + " · 点格子即可改色 · 所有中心块已固定");
+                : "当前选择：" + colorName + " · 点格子即可改色 · 所有中心块已固定";
+        completionText.setText(feedback.isEmpty() ? progress : feedback);
         restartButton.setText(manualEntryInProgress ? "重新开始录入" : "从头录入");
         refreshPalette();
     }
@@ -249,13 +261,45 @@ public final class FaceEditorView extends LinearLayout {
         for (int i = 0; i < 6; i++) {
             char color = CubeState.FACE_ORDER.charAt(i);
             int entered = enteredColorCount(color);
+            boolean full = entered >= 9;
             boolean chosen = color == selectedColor;
             int base = CubeState.colorArgb(color);
-            paletteButtons[i].setText(COLOR_NAMES[i] + "\n" + entered + " / 9" + (chosen ? "  ✓" : ""));
+            paletteButtons[i].setEnabled(!full || chosen);
+            paletteButtons[i].setAlpha(full && !chosen ? .42f : 1f);
+            paletteButtons[i].setText(COLOR_NAMES[i] + "\n" + entered + " / 9" + (full ? " 已满" : chosen ? "  ✓" : ""));
             paletteButtons[i].setTextColor(color == 'U' || color == 'D' || color == 'L' ? Color.rgb(10, 29, 41) : Color.WHITE);
             paletteButtons[i].setBackground(gradient(new int[]{lighten(base, 22), base}, 16,
-                    chosen ? Color.WHITE : Color.argb(105, 229, 247, 255), chosen ? dp(3) : dp(1)));
+                    chosen ? Color.WHITE : full ? Color.argb(120, 255, 255, 255) : Color.argb(105, 229, 247, 255), chosen ? dp(3) : dp(1)));
         }
+    }
+
+    private boolean canPaint(int index, char color) {
+        char existing = cube.get(index);
+        boolean existingCounts = !manualEntryInProgress || confirmed[index];
+        int available = enteredColorCount(color) - (existingCounts && existing == color ? 1 : 0);
+        return available < 9;
+    }
+
+    private void chooseFirstAvailableColor() {
+        if (enteredColorCount(selectedColor) < 9) return;
+        for (char candidate : CubeState.FACE_ORDER.toCharArray()) {
+            if (enteredColorCount(candidate) < 9) {
+                selectedColor = candidate;
+                return;
+            }
+        }
+    }
+
+    private int colorIndex(char color) { return CubeState.FACE_ORDER.indexOf(color); }
+
+    private void selectColor(char color) {
+        if (enteredColorCount(color) >= 9 && color != selectedColor) {
+            feedback = COLOR_NAMES[colorIndex(color)] + "已经填满 9 格，无法继续选择。";
+        } else {
+            selectedColor = color;
+            feedback = "";
+        }
+        refresh();
     }
 
     private boolean isFaceComplete(int face) {

@@ -406,7 +406,9 @@ public final class MainActivity extends AppCompatActivity {
         stopPlayback();
         clearScrambleContext();
         solutionMoves.clear();
-        solutionText.setText("上色状态已修改，请重新计算解法。");
+        // 先同步当前颜色状态到三维模型，再刷新其余界面信息。
+        if (cubeView != null) cubeView.setFacelets(cube.facelets());
+        solutionText.setText("上色已同步到 3D 魔方。完成后将校验是否可还原。 ");
         playButton.setEnabled(false);
         refreshAll();
     }
@@ -557,10 +559,12 @@ public final class MainActivity extends AppCompatActivity {
         if (playing) {
             stopPlayback();
         } else {
+            if (!ensureCanRestore()) return;
             if (playbackIndex >= solutionMoves.size()) {
                 cube.setFacelets(beforePlayback == null ? cube.facelets() : beforePlayback);
                 playbackIndex = 0;
                 refreshAll();
+                if (!ensureCanRestore()) return;
             }
             playing = true;
             playButton.setText("暂停还原");
@@ -571,6 +575,7 @@ public final class MainActivity extends AppCompatActivity {
     private final Runnable playbackTick = new Runnable() {
         @Override public void run() {
             if (!playing || cubeView == null || cubeView.isMoveAnimating()) return;
+            if (!ensureCanRestore()) return;
             if (playbackIndex >= solutionMoves.size()) {
                 playing = false;
                 playButton.setText("再次演示");
@@ -594,6 +599,7 @@ public final class MainActivity extends AppCompatActivity {
     private void stepPlayback() {
         if (solutionMoves.isEmpty()) { toast("请先计算解法。"); return; }
         if (cubeView != null && cubeView.isMoveAnimating()) return;
+        if (!ensureCanRestore()) return;
         stopPlayback();
         if (playbackIndex >= solutionMoves.size()) {
             cube.setFacelets(beforePlayback == null ? cube.facelets() : beforePlayback);
@@ -612,6 +618,27 @@ public final class MainActivity extends AppCompatActivity {
                 playStatus.setText("已完成最后一步。再次演示可从头播放。 ");
             }
         });
+    }
+
+    /** 在播放前以及每步播放前检查 54 格颜色、中心块、朝向与奇偶性。 */
+    private boolean ensureCanRestore() {
+        if (editor != null && editor.isManualEntryInProgress() && !editor.isEntryComplete()) {
+            stopPlayback();
+            playStatus.setText("还原已拦截：请先完成全部 48 个非中心格。 ");
+            solutionText.setText("当前录入未完成，不能开始还原。\n" + editor.entryStatus());
+            toast("请先完成逐面上色。");
+            return false;
+        }
+        String validation = SolverFacade.validate(cube.facelets());
+        if (validation != null) {
+            stopPlayback();
+            playStatus.setText("还原已拦截：当前状态不可还原。 ");
+            solutionText.setText("无法开始还原：" + validation + "\n请在上色区修正后重新计算解法。 ");
+            if (playButton != null) playButton.setEnabled(false);
+            toast(validation);
+            return false;
+        }
+        return true;
     }
 
     private int animationDurationMs() {

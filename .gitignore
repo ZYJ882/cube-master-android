@@ -8,9 +8,11 @@ SolverTest.java
 SolverTimingTest.java
 SolvedStateTest.java
 ScrambleContractTest.java
+StateGuardTest.java
 maptest-out/
 solvertest-out/
 solver-timing-out/
 solved-state-out/
 solver-regression-out/
+state-guard-out/
 third_party_review/
