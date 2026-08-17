@@ -473,34 +473,46 @@ public final class Cube3DView extends View {
         if (!layerDirectionLocked) {
             if (distance < dp(8)) return;
             if (layerGestureListener != null) layerGestureListener.onLayerGestureStarted();
-            layerHorizontal = Math.abs(dx) >= Math.abs(dy);
+            // 不再直接比较屏幕 dx/dy；侧面与顶面的投影会扭曲屏幕方向。
+            layerHorizontal = isDragAlongLocalRow(touchSticker, dx, dy);
             layerDirectionLocked = true;
             animationFacelets = facelets;
         }
-        float primary = layerHorizontal ? dx : dy;
-        pendingLayerMove = directMoveFor(touchSticker, layerHorizontal, primary);
+        pendingLayerMove = directMoveFor(touchSticker, layerHorizontal, dx, dy);
         animationMove = pendingLayerMove.charAt(0);
-        float sign = pendingLayerMove.endsWith("'") ? -1f : 1f;
-        float magnitude = clamp(Math.abs(primary) * 90f / dp(116), 0f, 82f);
+        float signedPixels = signedDragForMove(touchSticker, animationMove, dx, dy);
+        float sign = signedPixels >= 0f ? 1f : -1f;
+        float magnitude = clamp(Math.abs(signedPixels) * 90f / dp(116), 0f, 82f);
         animationAngle = sign * magnitude;
         directMoveStarted = magnitude >= 12f;
         invalidate();
     }
 
     /**
-     * 从可见贴纸的行列推导实际层：横向拖动优先按行选择 U/E/D 或 F/S/B；
-     * 纵向拖动优先按列选择 L/M/R 或 B/S/F。这样顶层、中层与外层都可直接触控。
+     * 将屏幕拖动转换为触摸面的局部“沿行”或“沿列”方向，再从实际行列选择切片。
+     * 这能在前、侧、顶、底各面保持相同的操作语义。
      */
-    private String directMoveFor(StickerPolygon sticker, boolean horizontal, float primaryDrag) {
-        char move;
-        if (horizontal) {
-            if (sticker.face == 0 || sticker.face == 3) move = rowMove(sticker.row, 'B', 'S', 'F');
-            else move = rowMove(sticker.row, 'U', 'E', 'D');
-        } else {
-            if (sticker.face == 1 || sticker.face == 4) move = columnMove(sticker.col, 'B', 'S', 'F');
-            else move = columnMove(sticker.col, 'L', 'M', 'R');
+    private String directMoveFor(StickerPolygon sticker, boolean alongLocalRow, float dx, float dy) {
+        char move = alongLocalRow ? moveForRow(sticker.face, sticker.row) : moveForColumn(sticker.face, sticker.col);
+        float signed = signedDragForMove(sticker, move, dx, dy);
+        return String.valueOf(move) + (signed >= 0f ? "" : "'");
+    }
+
+    private static char moveForRow(int face, int row) {
+        switch (face) {
+            case 0: return rowMove(row, 'B', 'S', 'F'); // U 面：后 / 中 / 前
+            case 3: return rowMove(row, 'F', 'S', 'B'); // D 面：前 / 中 / 后
+            default: return rowMove(row, 'U', 'E', 'D'); // F/R/B/L 面：上 / 中 / 下
         }
-        return String.valueOf(move) + (primaryDrag >= 0f ? "" : "'");
+    }
+
+    private static char moveForColumn(int face, int col) {
+        switch (face) {
+            case 1: return columnMove(col, 'F', 'S', 'B'); // R 面：前 / 中 / 后
+            case 4: return columnMove(col, 'B', 'S', 'F'); // L 面：后 / 中 / 前
+            case 5: return columnMove(col, 'R', 'M', 'L'); // B 面：右 / 中 / 左
+            default: return columnMove(col, 'L', 'M', 'R'); // U/F/D 面：左 / 中 / 右
+        }
     }
 
     private static char rowMove(int row, char top, char middle, char bottom) {
@@ -509,6 +521,73 @@ public final class Cube3DView extends View {
 
     private static char columnMove(int col, char left, char middle, char right) {
         return col == 0 ? left : (col == 1 ? middle : right);
+    }
+
+    private boolean isDragAlongLocalRow(StickerPolygon sticker, float dx, float dy) {
+        float[] center = stickerPosition(sticker.face, sticker.row, sticker.col);
+        PointF rowDirection = projectedDirection(center, localRight(sticker.face));
+        PointF columnDirection = projectedDirection(center, localDown(sticker.face));
+        float rowLength = Math.max(1f, (float) Math.hypot(rowDirection.x, rowDirection.y));
+        float columnLength = Math.max(1f, (float) Math.hypot(columnDirection.x, columnDirection.y));
+        float rowScore = Math.abs(dx * rowDirection.x + dy * rowDirection.y) / rowLength;
+        float columnScore = Math.abs(dx * columnDirection.x + dy * columnDirection.y) / columnLength;
+        return rowScore >= columnScore;
+    }
+
+    /** 返回当前屏幕拖动在标准正向转动切线上的投影，正负号决定正常或撇号方向。 */
+    private float signedDragForMove(StickerPolygon sticker, char move, float dx, float dy) {
+        float[] center = stickerPosition(sticker.face, sticker.row, sticker.col);
+        int[] axisInt = CubeState.rotationAxisForMove(move);
+        float[] axis = new float[]{axisInt[0], axisInt[1], axisInt[2]};
+        PointF start = project(transform(center), getWidth() * .5f, getHeight() * .505f, Math.min(getWidth(), getHeight()) * .205f);
+        PointF end = project(transform(rotateMove(center, axis, 12f)), getWidth() * .5f, getHeight() * .505f, Math.min(getWidth(), getHeight()) * .205f);
+        float vx = end.x - start.x;
+        float vy = end.y - start.y;
+        float length = Math.max(1f, (float) Math.hypot(vx, vy));
+        return (dx * vx + dy * vy) / length;
+    }
+
+    private PointF projectedDirection(float[] center, float[] direction) {
+        float[] target = new float[]{center[0] + direction[0] * .55f, center[1] + direction[1] * .55f, center[2] + direction[2] * .55f};
+        float cx = getWidth() * .5f;
+        float cy = getHeight() * .505f;
+        float scale = Math.min(getWidth(), getHeight()) * .205f;
+        PointF start = project(transform(center), cx, cy, scale);
+        PointF end = project(transform(target), cx, cy, scale);
+        return new PointF(end.x - start.x, end.y - start.y);
+    }
+
+    private static float[] stickerPosition(int face, int row, int col) {
+        switch (face) {
+            case 0: return new float[]{col - 1f, 1.5f, row - 1f};
+            case 1: return new float[]{1.5f, 1f - row, 1f - col};
+            case 2: return new float[]{col - 1f, 1f - row, 1.5f};
+            case 3: return new float[]{col - 1f, -1.5f, 1f - row};
+            case 4: return new float[]{-1.5f, 1f - row, col - 1f};
+            default: return new float[]{1f - col, 1f - row, -1.5f};
+        }
+    }
+
+    private static float[] localRight(int face) {
+        switch (face) {
+            case 0: return new float[]{1, 0, 0};
+            case 1: return new float[]{0, 0, -1};
+            case 2: return new float[]{1, 0, 0};
+            case 3: return new float[]{1, 0, 0};
+            case 4: return new float[]{0, 0, 1};
+            default: return new float[]{-1, 0, 0};
+        }
+    }
+
+    private static float[] localDown(int face) {
+        switch (face) {
+            case 0: return new float[]{0, 0, 1};
+            case 1: return new float[]{0, -1, 0};
+            case 2: return new float[]{0, -1, 0};
+            case 3: return new float[]{0, 0, -1};
+            case 4: return new float[]{0, -1, 0};
+            default: return new float[]{0, -1, 0};
+        }
     }
 
     private void finishLayerGesture(boolean released) {

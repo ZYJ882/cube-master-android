@@ -1,0 +1,2 @@
+787e353488ad442ec4b3a247c6cad53cf08ddff76a5623bf106a29244e3d11b0  CubeMaster-3x3-v1.1.10-local-axis-debug.apk
+1d3d5e7b7262efaf5db713a7fe7ec6e018ff31b3b4868baba5f44ecd07acbe92  CubeMaster-3x3-v1.1.10-Android-Source.zip
