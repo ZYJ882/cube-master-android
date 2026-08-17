@@ -23,7 +23,8 @@ public final class FaceEditorView extends LinearLayout {
     private static final String[] COLOR_NAMES = {"白色", "红色", "绿色", "黄色", "橙色", "蓝色"};
     private static final String[] SHORT_NAMES = {"白", "红", "绿", "黄", "橙", "蓝"};
 
-    private CubeState cube;
+    /** 下方独立上色草稿；不会直接改写上方真实魔方。 */
+    private final CubeState draft;
     private int activeFace = 0;
     private char selectedColor = 'U';
     private final AppCompatButton[] faceButtons = new AppCompatButton[6];
@@ -40,8 +41,10 @@ public final class FaceEditorView extends LinearLayout {
 
     public FaceEditorView(Context context, CubeState cube) {
         super(context);
-        this.cube = cube;
-        Arrays.fill(confirmed, true);
+        this.draft = new CubeState(cube.facelets());
+        // 默认只确认六个中心块；未填写格只会在用户点击“刷新上色”时灰显。
+        Arrays.fill(confirmed, false);
+        for (int face = 0; face < 6; face++) confirmed[CubeState.stickerIndex(face, 1, 1)] = true;
         setOrientation(VERTICAL);
         setPadding(0, dp(2), 0, dp(4));
         build();
@@ -50,8 +53,12 @@ public final class FaceEditorView extends LinearLayout {
 
     public void setListener(Listener listener) { this.listener = listener; }
 
-    public void setCube(CubeState cube) {
-        this.cube = cube;
+    /** 显式重置上色草稿时才从真实魔方复制，日常扭层、打乱和还原不会调用此方法。 */
+    public void resetDraftFromCube(CubeState cube) {
+        draft.setFacelets(cube.facelets());
+        Arrays.fill(confirmed, true);
+        manualEntryInProgress = false;
+        feedback = "草稿已复制真实魔方；刷新上色仅用于预览。";
         refresh();
     }
 
@@ -62,11 +69,14 @@ public final class FaceEditorView extends LinearLayout {
         refresh();
     }
 
-    /** 从识图流程导入完整一面时，标记该面已由用户确认。 */
-    public void markFaceCaptured(int face) {
+    /** 从识图流程导入一面到草稿；只有预览时才会显示在上方三维模型。 */
+    public void importScannedFace(int face, char[] values) {
+        draft.setFace(face, values);
         for (int i = 0; i < 9; i++) confirmed[CubeState.stickerIndex(face, i / 3, i % 3)] = true;
-        if (manualEntryInProgress && allFacesComplete()) manualEntryInProgress = false;
+        // 扫描到一面后进入草稿录入流程，但该流程只影响预览，不会阻塞真实魔方操作。
+        manualEntryInProgress = !allFacesComplete();
         chooseFirstAvailableColor();
+        feedback = "已更新" + COLOR_NAMES[face] + "上色草稿；点击“刷新上色”可预览。";
         refresh();
     }
 
@@ -74,13 +84,13 @@ public final class FaceEditorView extends LinearLayout {
     public boolean isEntryComplete() { return !manualEntryInProgress || allFacesComplete(); }
 
     public String entryStatus() {
-        if (manualEntryInProgress) return "手动录入进度：" + confirmedEditableCount() + " / 48 格";
-        return "颜色统计：" + colorCounts();
+        if (manualEntryInProgress) return "上色草稿进度：" + confirmedEditableCount() + " / 48 格";
+        return "上色草稿：已填 " + confirmedEditableCount() + " / 48 格（不影响真实魔方）";
     }
 
     /** 供 3D 预览使用：? 表示尚未由用户填写、应显示为灰色的面片。 */
     public String previewFaceletsFor3D() {
-        char[] preview = cube.facelets().toCharArray();
+        char[] preview = draft.facelets().toCharArray();
         for (int index = 0; index < preview.length; index++) {
             if (!confirmed[index]) preview[index] = '?';
         }
@@ -190,9 +200,9 @@ public final class FaceEditorView extends LinearLayout {
             refresh();
             return;
         }
-        cube.set(index, selectedColor);
+        draft.set(index, selectedColor);
         confirmed[index] = true;
-        feedback = "已同步到上方 3D 魔方。";
+        feedback = "已写入上色草稿；点击“刷新上色”才会临时显示到上方 3D。";
         boolean faceNowComplete = isFaceComplete(activeFace);
         if (faceNowComplete) autoAdvance();
         if (manualEntryInProgress && allFacesComplete()) manualEntryInProgress = false;
@@ -229,7 +239,7 @@ public final class FaceEditorView extends LinearLayout {
         stepTitle.setText("第 " + (activeFace + 1) + " / 6 面：" + colorName + "面");
         instructionText.setText(manualEntryInProgress
                 ? "请让「" + colorName + "中心块」朝向自己，按实际颜色填写周围 8 格。每种颜色最多 9 格，填完自动进入下一面。"
-                : "识别有误时：选择未满 9 格的颜色，再点要修改的格子；修改会立即同步到上方 3D 魔方。");
+                : "上色仅写入草稿。点击上方“刷新上色”才会临时预览；不影响打乱、扭层或还原。");
 
         for (int i = 0; i < 6; i++) {
             boolean active = i == activeFace;
@@ -245,7 +255,7 @@ public final class FaceEditorView extends LinearLayout {
             int index = CubeState.stickerIndex(activeFace, i / 3, i % 3);
             boolean center = i == 4;
             boolean known = confirmed[index];
-            char color = cube.get(index);
+            char color = draft.get(index);
             stickerButtons[i].setEnabled(!center);
             if (!known && !center) {
                 stickerButtons[i].setText("点我\n填写");
@@ -260,7 +270,7 @@ public final class FaceEditorView extends LinearLayout {
 
         String progress = manualEntryInProgress
                 ? "已填写 " + confirmedEditableCount() + " / 48 格 · " + (allFacesComplete() ? "录入完成，可计算解法" : "继续填写即可")
-                : "当前选择：" + colorName + " · 点格子即可改色 · 所有中心块已固定";
+                : "当前选择：" + colorName + " · 点格子写入草稿 · 不影响真实魔方";
         completionText.setText(feedback.isEmpty() ? progress : feedback);
         restartButton.setText(manualEntryInProgress ? "重新开始录入" : "从头录入");
         refreshPalette();
@@ -283,7 +293,7 @@ public final class FaceEditorView extends LinearLayout {
     }
 
     private boolean canPaint(int index, char color) {
-        char existing = cube.get(index);
+        char existing = draft.get(index);
         boolean existingCounts = !manualEntryInProgress || confirmed[index];
         int available = enteredColorCount(color) - (existingCounts && existing == color ? 1 : 0);
         return available < 9;
@@ -330,9 +340,9 @@ public final class FaceEditorView extends LinearLayout {
     }
 
     private int enteredColorCount(char color) {
-        if (!manualEntryInProgress) return cube.colorCount(color);
+        if (!manualEntryInProgress) return draft.colorCount(color);
         int count = 0;
-        for (int index = 0; index < 54; index++) if (confirmed[index] && cube.get(index) == color) count++;
+        for (int index = 0; index < 54; index++) if (confirmed[index] && draft.get(index) == color) count++;
         return count;
     }
 
@@ -340,7 +350,7 @@ public final class FaceEditorView extends LinearLayout {
         StringBuilder result = new StringBuilder();
         for (int i = 0; i < 6; i++) {
             if (result.length() > 0) result.append("  ");
-            result.append(SHORT_NAMES[i]).append("=").append(cube.colorCount(CubeState.FACE_ORDER.charAt(i)));
+            result.append(SHORT_NAMES[i]).append("=").append(draft.colorCount(CubeState.FACE_ORDER.charAt(i)));
         }
         return result.toString();
     }

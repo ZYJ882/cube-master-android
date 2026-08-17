@@ -1,0 +1,2 @@
+f48c412f3d75c535dd06e33493a35b286c25ae2deb0a79a366125b28220518e1  CubeMaster-3x3-v1.1.11-draft-separation-debug.apk
+1a3415898e37080b0cbe53574013709c67aefdb9bd00ad7d4e23ec874fd3ccda  CubeMaster-3x3-v1.1.11-Android-Source.zip

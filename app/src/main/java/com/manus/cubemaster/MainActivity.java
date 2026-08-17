@@ -292,7 +292,7 @@ public final class MainActivity extends AppCompatActivity {
         stateText.setPadding(0, dp(5), 0, dp(4));
         panel.addView(stateText);
         editor = new FaceEditorView(this, cube);
-        editor.setListener(this::onCubeEdited);
+        editor.setListener(this::onColorDraftEdited);
         panel.addView(editor, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
         return panel;
     }
@@ -392,14 +392,13 @@ public final class MainActivity extends AppCompatActivity {
             return;
         }
         new CameraScanDialog(this, this, 0, (face, values) -> {
-            cube.setFace(face, values);
+            // 识图结果只写入下方草稿，真实魔方仍可继续打乱、扭层与还原。
             editor.setActiveFace(face);
-            editor.markFaceCaptured(face);
+            editor.importScannedFace(face, values);
             modelPreviewMode = false;
-            if (cubeView != null) cubeView.setFacelets(cube.facelets());
-            onCubeEdited();
+            onColorDraftEdited();
             String[] names = {"白色", "红色", "绿色", "黄色", "橙色", "蓝色"};
-            toast("已导入" + names[face] + "面，请在下方复核颜色。");
+            toast("已写入" + names[face] + "上色草稿；点击“刷新上色”可预览。");
         }).show();
     }
 
@@ -430,7 +429,7 @@ public final class MainActivity extends AppCompatActivity {
     private void beginDirectLayerGesture() {
         cancelActiveSolve(false);
         stopPlayback();
-        modelPreviewMode = false;
+        exitColorPreviewToRealState(null);
         solutionMoves.clear();
         if (playButton != null) playButton.setEnabled(false);
         if (solutionText != null) solutionText.setText("正在手动扭动魔方层；松手后会决定回弹或完成转动。 ");
@@ -508,25 +507,31 @@ public final class MainActivity extends AppCompatActivity {
         refreshAll();
     }
 
-    private void onCubeEdited() {
-        cancelActiveSolve(false);
-        stopPlayback();
-        clearScrambleContext();
-        solutionMoves.clear();
-        if (!modelPreviewMode && cubeView != null) cubeView.setFacelets(cube.facelets());
-        solutionText.setText(modelPreviewMode ? "上色已更改；按“刷新上色”即可更新灰显预览。" : "上色已更改。完成后将校验是否可还原。 ");
-        playButton.setEnabled(false);
-        refreshAll();
+    /** 下方编辑只改变独立上色草稿，不再中断真实魔方的打乱、扭层、解法或还原。 */
+    private void onColorDraftEdited() {
+        if (modelPreviewMode && cubeView != null && editor != null) {
+            cubeView.setFacelets(editor.previewFaceletsFor3D());
+            if (playStatus != null) playStatus.setText("上色预览已更新；真实魔方状态仍保持不变。 ");
+        }
+        if (stateText != null && editor != null) stateText.setText(editor.entryStatus());
     }
 
-    /** 手动同步：已确认格显示用户填写的颜色，尚未填写格显示灰色。 */
+    /** 手动同步：已确认草稿格显示颜色，尚未填写格显示灰色，不会改写真实魔方。 */
     private void syncEditorPreviewTo3D() {
         if (cubeView == null || editor == null) return;
         stopPlayback();
         modelPreviewMode = true;
         cubeView.setFacelets(editor.previewFaceletsFor3D());
-        playStatus.setText("3D 上色预览已刷新：灰色表示尚未填写。 ");
-        toast("已同步上色；灰色格子尚未填写。");
+        playStatus.setText("正在显示上色草稿：灰色表示未填写；真实魔方状态未改变。 ");
+        toast("已刷新上色预览；开始还原时会自动切回真实魔方。 ");
+    }
+
+    /** 仅在操作真实魔方前退出草稿预览，不清除草稿内容。 */
+    private void exitColorPreviewToRealState(String status) {
+        if (!modelPreviewMode) return;
+        modelPreviewMode = false;
+        if (cubeView != null) cubeView.setFacelets(cube.facelets());
+        if (status != null && playStatus != null) playStatus.setText(status);
     }
 
     private void calculateSolution() {
@@ -535,11 +540,7 @@ public final class MainActivity extends AppCompatActivity {
             return;
         }
         stopPlayback();
-        if (editor != null && editor.isManualEntryInProgress() && !editor.isEntryComplete()) {
-            solutionText.setText("还有格子未填写。请按照“第几面”的提示完成九宫格后再计算。 ");
-            playStatus.setText(editor.entryStatus());
-            return;
-        }
+        exitColorPreviewToRealState("已退出上色预览，正在使用真实魔方计算。 ");
         if (warmUpFuture != null && !warmUpFuture.isDone()) {
             solutionText.setText("求解器正在后台准备，尚未开始计算。准备完成后请再次点击“计算高效解法”。");
             playStatus.setText("您仍可继续手动扭动、上色或识图；当前不会自动求解。 ");
@@ -743,15 +744,9 @@ public final class MainActivity extends AppCompatActivity {
         });
     }
 
-    /** 在播放前以及每步播放前检查 54 格颜色、中心块、朝向与奇偶性。 */
+    /** 在播放前以及每步播放前仅检查真实魔方的颜色、中心块、朝向与奇偶性。 */
     private boolean ensureCanRestore() {
-        if (editor != null && editor.isManualEntryInProgress() && !editor.isEntryComplete()) {
-            stopPlayback();
-            playStatus.setText("还原已拦截：请先完成全部 48 个非中心格。 ");
-            solutionText.setText("当前录入未完成，不能开始还原。\n" + editor.entryStatus());
-            toast("请先完成逐面上色。");
-            return false;
-        }
+        exitColorPreviewToRealState("已退出上色预览，正在还原真实魔方。 ");
         if (cube.normalizeOrientationForSolver()) {
             modelPreviewMode = false;
             refreshAll();
