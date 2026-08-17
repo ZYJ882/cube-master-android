@@ -1,5 +1,7 @@
 package com.manus.cubemaster.solver;
 
+import java.io.InputStream;
+
 import com.manus.cubemaster.solver.utils.Corner;
 import com.manus.cubemaster.solver.utils.Edge;
 
@@ -9,9 +11,14 @@ public final class SolverFacade {
 
     private SolverFacade() { }
 
-    /** 在界面空闲时后台初始化坐标和剪枝表。 */
+    /** 在界面空闲时从类路径资源加载坐标和剪枝表，供宿主 JVM 调用。 */
     public static void warmUp() {
         Search.warmUp();
+    }
+
+    /** 在 Android 端从 APK AssetManager 打开的资源流加载坐标和剪枝表。 */
+    public static void warmUp(InputStream tableResource) {
+        CoordCube.initialize(tableResource);
     }
 
     public static boolean isSolved(String facelets) {

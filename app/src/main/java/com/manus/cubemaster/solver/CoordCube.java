@@ -1,357 +1,151 @@
 package com.manus.cubemaster.solver;
 
-// Representation of the cube on the coordinate level
-public class CoordCube {
+import java.io.BufferedInputStream;
+import java.io.DataInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 
-	public static final short N_TWIST = 2187;// 3^7 possible corner orientations
-	public static final short N_FLIP = 2048;// 2^11 possible edge flips
-	static final short N_SLICE1 = 495;// 12 choose 4 possible positions of FR,FL,BL,BR edges
-	static final short N_SLICE2 = 24;// 4! permutations of FR,FL,BL,BR edges in phase2
-	private static final short N_PARITY = 2; // 2 possible corner parities
-	private static final short N_URFtoDLF = 20160;// 8!/(8-6)! permutation of URF,UFL,ULB,UBR,DFR,DLF corners
-	private static final short N_FRtoBR = 11880; // 12!/(12-4)! permutation of FR,FL,BL,BR edges
-	private static final short N_URtoUL = 1320; // 12!/(12-3)! permutation of UR,UF,UL edges
-	private static final short N_UBtoDF = 1320; // 12!/(12-3)! permutation of UB,DR,DF edges
-	private static final short N_URtoDF = 20160; // 8!/(8-6)! permutation of UR,UF,UL,UB,DR,DF edges in phase2
+/**
+ * 魔方坐标层表示。
+ *
+ * <p>移动设备运行时不再重建坐标表和剪枝表。所有可变查表数据由构建期导出为
+ * {@code kociemba_tables_v1.bin} 并随 APK 一起发布；求解器初始化仅负责校验并加载该资源。</p>
+ */
+public final class CoordCube {
+    public static final short N_TWIST = 2187;
+    public static final short N_FLIP = 2048;
+    static final short N_SLICE1 = 495;
+    static final short N_SLICE2 = 24;
+    private static final short N_PARITY = 2;
+    private static final short N_URFtoDLF = 20160;
+    private static final short N_FRtoBR = 11880;
+    private static final short N_URtoUL = 1320;
+    private static final short N_UBtoDF = 1320;
+    private static final short N_URtoDF = 20160;
+    public static final int N_URFtoDLB = 40320;
+    public static final int N_URtoBR = 479001600;
+    private static final short N_MOVE = 18;
 
-	public static final int N_URFtoDLB = 40320;// 8! permutations of the corners
-	public static final int N_URtoBR = 479001600;// 8! permutations of the corners
+    private static final int TABLE_MAGIC = 0x434D5431; // CMT1
+    private static final int TABLE_FORMAT_VERSION = 1;
+    private static final int TABLE_END_MARKER = 0x454E4431; // END1
+    private static final String TABLE_RESOURCE = "/kociemba_tables_v1.bin";
 
-	private static final short N_MOVE = 18;
+    private static volatile boolean tablesReady = false;
 
-	// All coordinates are 0 for a solved cube except for UBtoDF, which is 114
-	short twist;
-	short flip;
-	short parity;
-	short FRtoBR;
-	short URFtoDLF;
-	short URtoUL;
-	short UBtoDF;
+    short twist;
+    short flip;
+    short parity;
+    short FRtoBR;
+    short URFtoDLF;
+    short URtoUL;
+    short UBtoDF;
 
-	// Generate a CoordCube from a CubieCube
-	CoordCube(CubieCube c) {
-		twist = c.getTwist();
-		flip = c.getFlip();
-		parity = c.cornerParity();
-		FRtoBR = c.getFRtoBR();
-		URFtoDLF = c.getURFtoDLF();
-		URtoUL = c.getURtoUL();
-		UBtoDF = c.getUBtoDF();
-	}
+    /** 固定的 18 步奇偶转换表，不需要从资源读取。 */
+    static final short[][] parityMove = {
+            {1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1},
+            {0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0}
+    };
 
-	/**
-	 * Parity of the corner permutation. This is the same as the parity for the edge permutation of a valid cube.
-	 * parity has values 0 and 1
-	 */
-	static short[][] parityMove = { { 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1 },
-			{ 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0 } };
+    static short[][] twistMove = new short[N_TWIST][N_MOVE];
+    static short[][] flipMove = new short[N_FLIP][N_MOVE];
+    static short[][] FRtoBR_Move = new short[N_FRtoBR][N_MOVE];
+    static short[][] URFtoDLF_Move = new short[N_URFtoDLF][N_MOVE];
+    static short[][] URtoDF_Move = new short[N_URtoDF][N_MOVE];
+    static short[][] URtoUL_Move = new short[N_URtoUL][N_MOVE];
+    static short[][] UBtoDF_Move = new short[N_UBtoDF][N_MOVE];
+    static short[][] MergeURtoULandUBtoDF = new short[336][336];
+    static byte[] Slice_URFtoDLF_Parity_Prun = new byte[N_SLICE2 * N_URFtoDLF * N_PARITY / 2];
+    static byte[] Slice_URtoDF_Parity_Prun = new byte[N_SLICE2 * N_URtoDF * N_PARITY / 2];
+    static byte[] Slice_Twist_Prun = new byte[N_SLICE1 * N_TWIST / 2 + 1];
+    static byte[] Slice_Flip_Prun = new byte[N_SLICE1 * N_FLIP / 2];
 
-	static short[][] twistMove = new short[N_TWIST][N_MOVE];
-	static short[][] flipMove = new short[N_FLIP][N_MOVE];
+    /** 从类路径资源加载全部两阶段查表数据；适用于宿主 JVM 回归测试和非 Android 调用。 */
+    public static synchronized void initialize() {
+        if (tablesReady) return;
+        InputStream raw = CoordCube.class.getResourceAsStream(TABLE_RESOURCE);
+        if (raw == null) throw new IllegalStateException("未找到 Kociemba 查表资源：" + TABLE_RESOURCE);
+        initialize(raw);
+    }
 
-	static short[][] FRtoBR_Move = new short[N_FRtoBR][N_MOVE];
-	static short[][] URFtoDLF_Move = new short[N_URFtoDLF][N_MOVE];
-	static short[][] URtoDF_Move = new short[N_URtoDF][N_MOVE];
-	static short[][] URtoUL_Move = new short[N_URtoUL][N_MOVE];
-	static short[][] UBtoDF_Move = new short[N_UBtoDF][N_MOVE];
-	static short[][] MergeURtoULandUBtoDF = new short[336][336];
-	static byte[] Slice_URFtoDLF_Parity_Prun = new byte[N_SLICE2 * N_URFtoDLF * N_PARITY / 2];
-	static byte[] Slice_URtoDF_Parity_Prun = new byte[N_SLICE2 * N_URtoDF * N_PARITY / 2];
-	static byte[] Slice_Twist_Prun = new byte[N_SLICE1 * N_TWIST / 2 + 1];
-	static byte[] Slice_Flip_Prun = new byte[N_SLICE1 * N_FLIP / 2];
+    /** 从 Android AssetManager 提供的流加载全部两阶段查表数据；该方法可安全重复调用。 */
+    public static synchronized void initialize(InputStream raw) {
+        if (tablesReady) {
+            closeQuietly(raw);
+            return;
+        }
+        if (raw == null) throw new IllegalStateException("未提供 Kociemba 查表资源流");
+        try (DataInputStream input = new DataInputStream(new BufferedInputStream(raw, 64 * 1024))) {
+            if (input.readInt() != TABLE_MAGIC) throw new IOException("Kociemba 查表资源魔数不匹配");
+            if (input.readInt() != TABLE_FORMAT_VERSION) throw new IOException("Kociemba 查表资源版本不兼容");
 
-	// Move table for the twists of the corners
-	// twist < 2187 in phase 2.
-	// twist = 0 in phase 2.
-	static {
-		CubieCube a = new CubieCube();
-		for (short i = 0; i < N_TWIST; i++) {
-			a.setTwist(i);
-			for (int j = 0; j < 6; j++) {
-				for (int k = 0; k < 3; k++) {
-					a.cornerMultiply(CubieCube.moveCube[j]);
-					twistMove[i][3 * j + k] = a.getTwist();
-				}
-				a.cornerMultiply(CubieCube.moveCube[j]);// 4. faceturn restores
-				// a
-			}
-		}
-	}
+            readShortMatrix(input, twistMove, "twistMove");
+            readShortMatrix(input, flipMove, "flipMove");
+            readShortMatrix(input, FRtoBR_Move, "FRtoBR_Move");
+            readShortMatrix(input, URFtoDLF_Move, "URFtoDLF_Move");
+            readShortMatrix(input, URtoDF_Move, "URtoDF_Move");
+            readShortMatrix(input, URtoUL_Move, "URtoUL_Move");
+            readShortMatrix(input, UBtoDF_Move, "UBtoDF_Move");
+            readShortMatrix(input, MergeURtoULandUBtoDF, "MergeURtoULandUBtoDF");
+            readBytes(input, Slice_URFtoDLF_Parity_Prun, "Slice_URFtoDLF_Parity_Prun");
+            readBytes(input, Slice_URtoDF_Parity_Prun, "Slice_URtoDF_Parity_Prun");
+            readBytes(input, Slice_Twist_Prun, "Slice_Twist_Prun");
+            readBytes(input, Slice_Flip_Prun, "Slice_Flip_Prun");
+            if (input.readInt() != TABLE_END_MARKER) throw new IOException("Kociemba 查表资源结束标记无效");
+            if (input.read() != -1) throw new IOException("Kociemba 查表资源包含多余数据");
+            tablesReady = true;
+        } catch (IOException error) {
+            String detail = error.getMessage();
+            if (detail == null || detail.trim().isEmpty()) detail = "资源数据不完整或格式错误";
+            throw new IllegalStateException("Kociemba 查表资源加载失败：" + detail, error);
+        }
+    }
 
-	// Move table for the flips of the edges
-	// flip < 2048 in phase 1
-	// flip = 0 in phase 2.
-	static {
-		CubieCube a = new CubieCube();
-		for (short i = 0; i < N_FLIP; i++) {
-			a.setFlip(i);
-			for (int j = 0; j < 6; j++) {
-				for (int k = 0; k < 3; k++) {
-					a.edgeMultiply(CubieCube.moveCube[j]);
-					flipMove[i][3 * j + k] = a.getFlip();
-				}
-				a.edgeMultiply(CubieCube.moveCube[j]);
-				// a
-			}
-		}
-	}
+    private static void closeQuietly(InputStream stream) {
+        if (stream == null) return;
+        try {
+            stream.close();
+        } catch (IOException ignored) {
+            // 已经完成初始化；关闭冗余流失败不影响求解器状态。
+        }
+    }
 
+    static boolean areTablesReady() {
+        return tablesReady;
+    }
 
+    private static void readShortMatrix(DataInputStream input, short[][] target, String name) throws IOException {
+        int rows = input.readInt();
+        int columns = input.readInt();
+        int expectedColumns = target.length == 0 ? 0 : target[0].length;
+        if (rows != target.length || columns != expectedColumns) {
+            throw new IOException(name + " 尺寸不匹配：" + rows + "×" + columns);
+        }
+        for (short[] row : target) {
+            for (int column = 0; column < row.length; column++) row[column] = input.readShort();
+        }
+    }
 
-	// Move table for the four UD-slice edges FR, FL, Bl and BR
-	// FRtoBRMove < 11880 in phase 1
-	// FRtoBRMove < 24 in phase 2
-	// FRtoBRMove = 0 for solved cube
-	static {
-		CubieCube a = new CubieCube();
-		for (short i = 0; i < N_FRtoBR; i++) {
-			a.setFRtoBR(i);
-			for (int j = 0; j < 6; j++) {
-				for (int k = 0; k < 3; k++) {
-					a.edgeMultiply(CubieCube.moveCube[j]);
-					FRtoBR_Move[i][3 * j + k] = a.getFRtoBR();
-				}
-				a.edgeMultiply(CubieCube.moveCube[j]);
-			}
-		}
-	}
+    private static void readBytes(DataInputStream input, byte[] target, String name) throws IOException {
+        int length = input.readInt();
+        if (length != target.length) throw new IOException(name + " 长度不匹配：" + length);
+        input.readFully(target);
+    }
 
+    /** 从 CubieCube 构造坐标；调用前表可以尚未加载。 */
+    CoordCube(CubieCube cube) {
+        twist = cube.getTwist();
+        flip = cube.getFlip();
+        parity = cube.cornerParity();
+        FRtoBR = cube.getFRtoBR();
+        URFtoDLF = cube.getURFtoDLF();
+        URtoUL = cube.getURtoUL();
+        UBtoDF = cube.getUBtoDF();
+    }
 
-	// Move table for permutation of six corners. The positions of the DBL and DRB corners are determined by the parity.
-	// URFtoDLF < 20160 in phase 1
-	// URFtoDLF < 20160 in phase 2
-	// URFtoDLF = 0 for solved cube.
-	static {
-		CubieCube a = new CubieCube();
-		for (short i = 0; i < N_URFtoDLF; i++) {
-			a.setURFtoDLF(i);
-			for (int j = 0; j < 6; j++) {
-				for (int k = 0; k < 3; k++) {
-					a.cornerMultiply(CubieCube.moveCube[j]);
-					URFtoDLF_Move[i][3 * j + k] = a.getURFtoDLF();
-				}
-				a.cornerMultiply(CubieCube.moveCube[j]);
-			}
-		}
-	}
-
-	// Move table for the permutation of six U-face and D-face edges in phase2. The positions of the DL and DB edges are
-	// determined by the parity.
-	// URtoDF < 665280 in phase 1
-	// URtoDF < 20160 in phase 2
-	// URtoDF = 0 for solved cube.
-	static {
-		CubieCube a = new CubieCube();
-		for (short i = 0; i < N_URtoDF; i++) {
-			a.setURtoDF(i);
-			for (int j = 0; j < 6; j++) {
-				for (int k = 0; k < 3; k++) {
-					a.edgeMultiply(CubieCube.moveCube[j]);
-					URtoDF_Move[i][3 * j + k] = (short) a.getURtoDF();
-					// Table values are only valid for phase 2 moves!
-					// For phase 1 moves, casting to short is not possible.
-				}
-				a.edgeMultiply(CubieCube.moveCube[j]);
-			}
-		}
-	}
-
-
-	// Move table for the three edges UR,UF and UL in phase1.
-	static {
-		CubieCube a = new CubieCube();
-		for (short i = 0; i < N_URtoUL; i++) {
-			a.setURtoUL(i);
-			for (int j = 0; j < 6; j++) {
-				for (int k = 0; k < 3; k++) {
-					a.edgeMultiply(CubieCube.moveCube[j]);
-					URtoUL_Move[i][3 * j + k] = a.getURtoUL();
-				}
-				a.edgeMultiply(CubieCube.moveCube[j]);
-			}
-		}
-	}
-
-	// Move table for the three edges UB,DR and DF in phase1.
-	static {
-		CubieCube a = new CubieCube();
-		for (short i = 0; i < N_UBtoDF; i++) {
-			a.setUBtoDF(i);
-			for (int j = 0; j < 6; j++) {
-				for (int k = 0; k < 3; k++) {
-					a.edgeMultiply(CubieCube.moveCube[j]);
-					UBtoDF_Move[i][3 * j + k] = a.getUBtoDF();
-				}
-				a.edgeMultiply(CubieCube.moveCube[j]);
-			}
-		}
-	}
-
-	// Table to merge the coordinates of the UR,UF,UL and UB,DR,DF edges at the beginning of phase2
-	static {
-		// for i, j <336 the six edges UR,UF,UL,UB,DR,DF are not in the
-		// UD-slice and the index is <20160
-		for (short uRtoUL = 0; uRtoUL < 336; uRtoUL++) {
-			for (short uBtoDF = 0; uBtoDF < 336; uBtoDF++) {
-				MergeURtoULandUBtoDF[uRtoUL][uBtoDF] = (short) CubieCube.getURtoDF(uRtoUL, uBtoDF);
-			}
-		}
-	}
-
-
-	// Pruning table for the permutation of the corners and the UD-slice edges in phase2.
-	// The pruning table entries give a lower estimation for the number of moves to reach the solved cube.
-	static {
-		for (int i = 0; i < N_SLICE2 * N_URFtoDLF * N_PARITY / 2; i++)
-			Slice_URFtoDLF_Parity_Prun[i] = -1;
-		int depth = 0;
-		setPruning(Slice_URFtoDLF_Parity_Prun, 0, (byte) 0);
-		int done = 1;
-		while (done != N_SLICE2 * N_URFtoDLF * N_PARITY) {
-			for (int i = 0; i < N_SLICE2 * N_URFtoDLF * N_PARITY; i++) {
-				int parity = i % 2;
-				int URFtoDLF = (i / 2) / N_SLICE2;
-				int slice = (i / 2) % N_SLICE2;
-				if (getPruning(Slice_URFtoDLF_Parity_Prun, i) == depth) {
-					for (int j = 0; j < 18; j++) {
-						switch (j) {
-							case 3:
-							case 5:
-							case 6:
-							case 8:
-							case 12:
-							case 14:
-							case 15:
-							case 17:
-								continue;
-							default:
-								int newSlice = FRtoBR_Move[slice][j];
-								int newURFtoDLF = URFtoDLF_Move[URFtoDLF][j];
-								int newParity = parityMove[parity][j];
-								if (getPruning(Slice_URFtoDLF_Parity_Prun, (N_SLICE2 * newURFtoDLF + newSlice) * 2 + newParity) == 0x0f) {
-									setPruning(Slice_URFtoDLF_Parity_Prun, (N_SLICE2 * newURFtoDLF + newSlice) * 2 + newParity,
-											(byte) (depth + 1));
-									done++;
-								}
-						}
-					}
-				}
-			}
-			depth++;
-		}
-	}
-
-	// Pruning table for the permutation of the edges in phase2.
-	// The pruning table entries give a lower estimation for the number of moves to reach the solved cube.
-	static {
-		for (int i = 0; i < N_SLICE2 * N_URtoDF * N_PARITY / 2; i++)
-			Slice_URtoDF_Parity_Prun[i] = -1;
-		int depth = 0;
-		setPruning(Slice_URtoDF_Parity_Prun, 0, (byte) 0);
-		int done = 1;
-		while (done != N_SLICE2 * N_URtoDF * N_PARITY) {
-			for (int i = 0; i < N_SLICE2 * N_URtoDF * N_PARITY; i++) {
-				int parity = i % 2;
-				int URtoDF = (i / 2) / N_SLICE2;
-				int slice = (i / 2) % N_SLICE2;
-				if (getPruning(Slice_URtoDF_Parity_Prun, i) == depth) {
-					for (int j = 0; j < 18; j++) {
-						switch (j) {
-							case 3:
-							case 5:
-							case 6:
-							case 8:
-							case 12:
-							case 14:
-							case 15:
-							case 17:
-								continue;
-							default:
-								int newSlice = FRtoBR_Move[slice][j];
-								int newURtoDF = URtoDF_Move[URtoDF][j];
-								int newParity = parityMove[parity][j];
-								if (getPruning(Slice_URtoDF_Parity_Prun, (N_SLICE2 * newURtoDF + newSlice) * 2 + newParity) == 0x0f) {
-									setPruning(Slice_URtoDF_Parity_Prun, (N_SLICE2 * newURtoDF + newSlice) * 2 + newParity,
-											(byte) (depth + 1));
-									done++;
-								}
-						}
-					}
-				}
-			}
-			depth++;
-		}
-	}
-
-	// Pruning table for the twist of the corners and the position (not permutation) of the UD-slice edges in phase1
-	// The pruning table entries give a lower estimation for the number of moves to reach the H-subgroup.
-	static {
-		for (int i = 0; i < N_SLICE1 * N_TWIST / 2 + 1; i++)
-			Slice_Twist_Prun[i] = -1;
-		int depth = 0;
-		setPruning(Slice_Twist_Prun, 0, (byte) 0);
-		int done = 1;
-		while (done != N_SLICE1 * N_TWIST) {
-			for (int i = 0; i < N_SLICE1 * N_TWIST; i++) {
-				int twist = i / N_SLICE1, slice = i % N_SLICE1;
-				if (getPruning(Slice_Twist_Prun, i) == depth) {
-					for (int j = 0; j < 18; j++) {
-						int newSlice = FRtoBR_Move[slice * 24][j] / 24;
-						int newTwist = twistMove[twist][j];
-						if (getPruning(Slice_Twist_Prun, N_SLICE1 * newTwist + newSlice) == 0x0f) {
-							setPruning(Slice_Twist_Prun, N_SLICE1 * newTwist + newSlice, (byte) (depth + 1));
-							done++;
-						}
-					}
-				}
-			}
-			depth++;
-		}
-
-	}
-
-
-
-	// Pruning table for the flip of the edges and the position (not permutation) of the UD-slice edges in phase1
-	// The pruning table entries give a lower estimation for the number of moves to reach the H-subgroup.
-
-	static {
-		for (int i = 0; i < N_SLICE1 * N_FLIP / 2; i++)
-			Slice_Flip_Prun[i] = -1;
-		int depth = 0;
-		setPruning(Slice_Flip_Prun, 0, (byte) 0);
-		int done = 1;
-		while (done != N_SLICE1 * N_FLIP) {
-			for (int i = 0; i < N_SLICE1 * N_FLIP; i++) {
-				int flip = i / N_SLICE1, slice = i % N_SLICE1;
-				if (getPruning(Slice_Flip_Prun, i) == depth) {
-					for (int j = 0; j < 18; j++) {
-						int newSlice = FRtoBR_Move[slice * 24][j] / 24;
-						int newFlip = flipMove[flip][j];
-						if (getPruning(Slice_Flip_Prun, N_SLICE1 * newFlip + newSlice) == 0x0f) {
-							setPruning(Slice_Flip_Prun, N_SLICE1 * newFlip + newSlice, (byte) (depth + 1));
-							done++;
-						}
-					}
-				}
-			}
-			depth++;
-		}
-	}
-
-	// Set pruning value in table. Two values are stored in one byte.
-	private static void setPruning(byte[] table, int index, byte value) {
-		if ((index & 1) == 0)
-			table[index / 2] &= 0xf0 | value;
-		else
-			table[index / 2] &= 0x0f | (value << 4);
-	}
-
-	// Extract pruning value
-	static byte getPruning(byte[] table, int index) {
-		if ((index & 1) == 0)
-			return (byte) (table[index / 2] & 0x0f);
-		else
-			return (byte) ((table[index / 2] & 0xf0) >>> 4);
-	}
+    /** 从压缩的 4-bit 剪枝表提取一个值。 */
+    static byte getPruning(byte[] table, int index) {
+        if ((index & 1) == 0) return (byte) (table[index / 2] & 0x0f);
+        return (byte) ((table[index / 2] & 0xf0) >>> 4);
+    }
 }

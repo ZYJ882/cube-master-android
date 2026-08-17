@@ -15,10 +15,10 @@ public class Search {
         SearchCancelledException() { super("求解已取消"); }
     }
 
-    /** 在后台建立坐标与剪枝表，避免用户首次点击求解时长时间等待。 */
+    /** 在后台加载随 APK 打包的坐标与剪枝表；运行时绝不重新生成完整表。 */
     public static void warmUp() {
         if (Thread.currentThread().isInterrupted()) throw new SearchCancelledException();
-        new CoordCube(new CubieCube());
+        CoordCube.initialize();
         checkInterrupted();
     }
 
@@ -86,10 +86,13 @@ public class Search {
         UBtoDF[0] = cube.UBtoDF;
     }
 
-	public static synchronized String solution(String facelets) {
-        if (SOLVED.equals(facelets)) return "";
-        checkInterrupted();
-	    axisInit(facelets);
+		public static synchronized String solution(String facelets) {
+	        if (SOLVED.equals(facelets)) return "";
+	        checkInterrupted();
+	        CoordCube.initialize();
+	        checkInterrupted();
+		    axisInit(facelets);
+
         checkInterrupted();
 
 		minDistPhase1[1] = 1;// else failure for depth=1, n=0

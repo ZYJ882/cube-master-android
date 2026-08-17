@@ -2,6 +2,7 @@ package com.manus.cubemaster;
 
 import android.Manifest;
 import android.content.pm.PackageManager;
+import android.content.res.AssetManager;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -37,6 +38,8 @@ import java.util.concurrent.Future;
 /** 液态玻璃版主界面：三维浏览、相机辅助录入、离线求解与动态还原。 */
 public final class MainActivity extends AppCompatActivity {
     private static final int CAMERA_PERMISSION = 2001;
+    private static final long SOLVER_RESOURCE_LOAD_TIMEOUT_MS = 8_000L;
+    private static final String KOCIEMBA_TABLE_ASSET = "kociemba_tables_v1.bin";
     private final CubeState cube = new CubeState();
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final ExecutorService solveExecutor = Executors.newSingleThreadExecutor();
@@ -47,6 +50,10 @@ public final class MainActivity extends AppCompatActivity {
     private Future<?> warmUpFuture;
     private Future<?> activeSolveFuture;
     private boolean solveInProgress = false;
+    private boolean solverTablesReady = false;
+    private boolean solverInitializationFailed = false;
+    private boolean pendingCalculateAfterLoad = false;
+    private long solverInitializationAttempt = 0L;
     private long solveRequestId = 0L;
     /** 仅在用户按下“刷新上色”后启用：未确认的面片在 3D 模型中显示为灰色。 */
     private boolean modelPreviewMode = false;
@@ -409,33 +416,62 @@ public final class MainActivity extends AppCompatActivity {
         }
     }
 
-    /** 应用启动时初始化 Kociemba 两阶段算法所需的坐标和剪枝表。 */
+    /** 加载随 APK 发布的 Kociemba 查表资源；8 秒内未完成则明确失败，不会无限等待。 */
     private void startSolverWarmUp() {
-        if (solveButton != null) {
+        final long attempt = ++solverInitializationAttempt;
+        solverTablesReady = false;
+        solverInitializationFailed = false;
+        if (solveButton != null && !solveInProgress) {
             solveButton.setEnabled(true);
             solveButton.setText("计算高效解法");
         }
-        if (playStatus != null) playStatus.setText("正在初始化 Kociemba 两阶段搜索；现在点击计算会在初始化后自动继续。 ");
+        if (!solveInProgress && playStatus != null) playStatus.setText("正在加载 Kociemba 查表资源；现在点击计算会自动继续。 ");
         warmUpFuture = warmUpExecutor.submit(() -> {
-            try {
-                SolverFacade.warmUp();
+            try (java.io.InputStream tableResource = getAssets().open(KOCIEMBA_TABLE_ASSET, AssetManager.ACCESS_STREAMING)) {
+                SolverFacade.warmUp(tableResource);
                 runOnUiThread(() -> {
+                    if (attempt != solverInitializationAttempt) return;
+                    solverTablesReady = true;
                     if (solveButton != null && !solveInProgress) {
                         solveButton.setEnabled(true);
                         solveButton.setText("计算高效解法");
                     }
-                    if (!solveInProgress && playStatus != null) playStatus.setText("Kociemba 两阶段求解器已就绪，可计算当前合法状态。 ");
+                    if (pendingCalculateAfterLoad && !solveInProgress) {
+                        pendingCalculateAfterLoad = false;
+                        calculateSolution();
+                    } else if (!solveInProgress && playStatus != null) {
+                        playStatus.setText("Kociemba 查表资源已加载，可计算当前合法状态。 ");
+                    }
                 });
             } catch (Throwable error) {
                 runOnUiThread(() -> {
-                    if (solveButton != null) {
-                        solveButton.setEnabled(true);
-                        solveButton.setText("重新初始化两阶段求解器");
-                    }
-                    if (!solveInProgress && playStatus != null) playStatus.setText("两阶段求解器初始化失败，请重新点击计算后重试。 ");
+                    if (attempt == solverInitializationAttempt) failSolverInitialization("Kociemba 查表资源加载失败：" + messageOf(error));
                 });
             }
         });
+        handler.postDelayed(() -> {
+            if (attempt != solverInitializationAttempt || solverTablesReady || (warmUpFuture != null && warmUpFuture.isDone())) return;
+            if (warmUpFuture != null) warmUpFuture.cancel(true);
+            failSolverInitialization("Kociemba 查表资源加载超过 8 秒，已停止等待。请重新尝试；若仍失败请重新安装本版本。");
+        }, SOLVER_RESOURCE_LOAD_TIMEOUT_MS);
+    }
+
+    private void failSolverInitialization(String message) {
+        solverInitializationFailed = true;
+        solverTablesReady = false;
+        pendingCalculateAfterLoad = false;
+        if (solveInProgress) {
+            solveRequestId++;
+            if (activeSolveFuture != null) activeSolveFuture.cancel(true);
+            activeSolveFuture = null;
+            solveInProgress = false;
+        }
+        if (solveButton != null) {
+            solveButton.setEnabled(true);
+            solveButton.setText("重新加载两阶段求解器");
+        }
+        if (solutionText != null) solutionText.setText(message);
+        if (playStatus != null) playStatus.setText("未开始还原；请重新加载查表资源后再计算。 ");
     }
 
     /** 用户开始直接拖动模型层：旧解法立即失效，完成层转后必须针对新状态重新计算。 */
@@ -561,7 +597,17 @@ public final class MainActivity extends AppCompatActivity {
             playStatus.setText("还原校验等待完整颜色状态。 ");
             return;
         }
-        final boolean initializationInProgress = warmUpFuture != null && !warmUpFuture.isDone();
+        if (solverInitializationFailed) {
+            solutionText.setText("正在重新加载 Kociemba 查表资源；加载完成后请再次计算当前状态。 ");
+            startSolverWarmUp();
+            return;
+        }
+        if (!solverTablesReady) {
+            pendingCalculateAfterLoad = true;
+            solutionText.setText("正在加载 Kociemba 查表资源；加载完成后将自动求解当前状态。 ");
+            playStatus.setText("正在加载内置坐标与剪枝表，最长等待 8 秒。 ");
+            return;
+        }
         if (cube.normalizeOrientationForSolver()) {
             modelPreviewMode = false;
             if (editor != null) editor.adoptLiveState(cube);
@@ -589,12 +635,8 @@ public final class MainActivity extends AppCompatActivity {
         playButton.setEnabled(false);
         solveButton.setEnabled(true);
         solveButton.setText("取消计算");
-        solutionText.setText(initializationInProgress
-                ? "Kociemba 两阶段算法正在初始化；初始化完成后将自动继续求解当前状态…"
-                : "正在使用 Kociemba 两阶段算法计算当前状态的标准解法…");
-        playStatus.setText(initializationInProgress
-                ? "正在建立坐标与剪枝表；已保留本次计算请求。"
-                : "设备端两阶段搜索进行中，正在求解当前状态。 ");
+        solutionText.setText("正在使用 Kociemba 两阶段算法计算当前状态的标准解法…");
+        playStatus.setText("设备端两阶段搜索进行中，正在求解当前状态。 ");
         activeSolveFuture = solveExecutor.submit(() -> {
             try {
                 final String solution = SolverFacade.solve(snapshot);
