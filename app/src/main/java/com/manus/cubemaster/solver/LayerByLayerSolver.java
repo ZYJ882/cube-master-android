@@ -15,6 +15,9 @@ import java.util.List;
  * Kociemba 返回的动作作为层先法输出。</p>
  */
 public final class LayerByLayerSolver {
+    private static final int MAX_STAGE_MOVES = 160;
+    private static final int MAX_TOTAL_MOVES = 360;
+
     private LayerByLayerSolver() { }
 
     public static final class Stage {
@@ -82,6 +85,9 @@ public final class LayerByLayerSolver {
     private static void appendStage(String referenceMoves, String title, String detail, CubeState verifier,
                                     List<Stage> stages, List<String> allMoves, char[] frame, Goal goal) {
         List<String> moves = toCurrentMoves(referenceMoves, frame);
+        if (moves.size() > MAX_STAGE_MOVES || allMoves.size() + moves.size() > MAX_TOTAL_MOVES) {
+            throw new IllegalStateException("层先法步骤异常过长，已安全停止计算。");
+        }
         verifier.applyMoves(moves);
         if (!goal.reached(verifier.facelets())) {
             throw new IllegalStateException("层先法阶段未达成：" + title);

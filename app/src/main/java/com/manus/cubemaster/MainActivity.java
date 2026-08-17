@@ -40,6 +40,7 @@ import java.util.concurrent.Future;
 public final class MainActivity extends AppCompatActivity {
     private static final int CAMERA_PERMISSION = 2001;
     private static final long SOLVER_RESOURCE_LOAD_TIMEOUT_MS = 8_000L;
+    private static final long SOLVE_REQUEST_TIMEOUT_MS = 12_000L;
     private static final String KOCIEMBA_TABLE_ASSET = "kociemba_tables_v1.bin";
     private final CubeState cube = new CubeState();
     private final Handler handler = new Handler(Looper.getMainLooper());
@@ -59,6 +60,7 @@ public final class MainActivity extends AppCompatActivity {
     private boolean pendingCalculateAfterLoad = false;
     private long solverInitializationAttempt = 0L;
     private long solveRequestId = 0L;
+    private Runnable solveTimeoutTask;
     /** 仅在用户按下“刷新上色”后启用：未确认的面片在 3D 模型中显示为灰色。 */
     private boolean modelPreviewMode = false;
 
@@ -70,6 +72,7 @@ public final class MainActivity extends AppCompatActivity {
     private TextView playStatus;
     private TextView speedLabel;
     private TextView heroStatus;
+    private View solutionPanel;
     private AppCompatButton solveButton;
     private AppCompatButton playButton;
     private SeekBar speedBar;
@@ -310,7 +313,12 @@ public final class MainActivity extends AppCompatActivity {
 
     private View buildSolutionPanel() {
         GlassCardLayout panel = glassCard(Color.argb(53, 167, 235, 255));
+        // 求解结果会动态扩展；禁用该卡片的软件图层，避免部分设备在重测量时丢失整张卡片。
+        panel.setLayerType(View.LAYER_TYPE_NONE, null);
+        panel.setClipChildren(false);
+        panel.setClipToPadding(false);
         panel.setPadding(dp(14), dp(13), dp(14), dp(13));
+        solutionPanel = panel;
         panel.addView(sectionHead("SOLUTION STUDIO", "计算与还原"));
         TextView explain = text("离线搜索会校验颜色、朝向与奇偶性，再生成可播放的标准记号步骤。", 12, Color.rgb(195, 219, 241));
         explain.setPadding(0, dp(6), 0, dp(10));
@@ -419,6 +427,20 @@ public final class MainActivity extends AppCompatActivity {
 
     private String calculateButtonLabel() {
         return selectedSolveMethod == SolveMethod.LAYER_BY_LAYER ? "计算真实层先法" : "计算高效解法";
+    }
+
+    /** 求解内容更新前后强制保留并重测量卡片，防止动态结果导致某些设备丢弃下方视图。 */
+    private void stabilizeSolutionPanel() {
+        if (solutionPanel == null) return;
+        solutionPanel.setVisibility(View.VISIBLE);
+        solutionPanel.requestLayout();
+        solutionPanel.invalidate();
+        solutionPanel.post(() -> {
+            if (solutionPanel != null) {
+                solutionPanel.requestLayout();
+                solutionPanel.invalidate();
+            }
+        });
     }
 
     private String formatSolvedResult(List<String> parsed) {
@@ -725,7 +747,9 @@ public final class MainActivity extends AppCompatActivity {
         }
 
         final long requestId = ++solveRequestId;
+        stabilizeSolutionPanel();
         solveInProgress = true;
+        scheduleSolveTimeout(requestId);
         playButton.setEnabled(false);
         solveButton.setEnabled(true);
         solveButton.setText("取消计算");
@@ -765,6 +789,7 @@ public final class MainActivity extends AppCompatActivity {
         if (requestId != solveRequestId) return;
         solveInProgress = false;
         activeSolveFuture = null;
+        cancelSolveTimeout();
         solveButton.setText("重新" + calculateButtonLabel());
         if (!snapshot.equals(cube.facelets()) || methodAtRequest != selectedSolveMethod) {
             solutionText.setText("魔方状态或还原方法已变化，请重新计算。");
@@ -776,6 +801,7 @@ public final class MainActivity extends AppCompatActivity {
         solutionMoves.addAll(parsed);
         playbackIndex = 0;
         beforePlayback = snapshot;
+        stabilizeSolutionPanel();
         if (parsed.isEmpty()) {
             solutionText.setText("魔方已经复原，无需还原步骤。");
             playButton.setEnabled(false);
@@ -793,7 +819,9 @@ public final class MainActivity extends AppCompatActivity {
         if (requestId != solveRequestId) return;
         solveInProgress = false;
         activeSolveFuture = null;
+        cancelSolveTimeout();
         solveButton.setText(calculateButtonLabel());
+        stabilizeSolutionPanel();
         solutionText.setText("已取消计算。您可以继续编辑、打乱，或重新生成当前选择的还原路线。 ");
         playStatus.setText("计算未占用界面。 ");
     }
@@ -802,9 +830,32 @@ public final class MainActivity extends AppCompatActivity {
         if (requestId != solveRequestId) return;
         solveInProgress = false;
         activeSolveFuture = null;
+        cancelSolveTimeout();
         solveButton.setText(calculateButtonLabel());
+        stabilizeSolutionPanel();
         solutionText.setText("当前状态的“" + selectedSolveMethod.displayName() + "”求解未完成：" + error);
         playStatus.setText("请检查上色状态，或重新计算当前魔方状态。 ");
+    }
+
+    private void scheduleSolveTimeout(final long requestId) {
+        cancelSolveTimeout();
+        solveTimeoutTask = () -> {
+            if (!solveInProgress || requestId != solveRequestId) return;
+            if (activeSolveFuture != null) activeSolveFuture.cancel(true);
+            activeSolveFuture = null;
+            solveInProgress = false;
+            solveRequestId++;
+            stabilizeSolutionPanel();
+            if (solveButton != null) solveButton.setText(calculateButtonLabel());
+            if (solutionText != null) solutionText.setText("计算已在 12 秒保护时间内停止。当前页面仍可继续使用；请重新计算，或改用高效计算机解。");
+            if (playStatus != null) playStatus.setText("求解未产生步骤，未开始还原。 ");
+        };
+        handler.postDelayed(solveTimeoutTask, SOLVE_REQUEST_TIMEOUT_MS);
+    }
+
+    private void cancelSolveTimeout() {
+        if (solveTimeoutTask != null) handler.removeCallbacks(solveTimeoutTask);
+        solveTimeoutTask = null;
     }
 
     private void cancelActiveSolve(boolean showMessage) {
@@ -813,6 +864,7 @@ public final class MainActivity extends AppCompatActivity {
         if (activeSolveFuture != null) activeSolveFuture.cancel(true);
         activeSolveFuture = null;
         solveInProgress = false;
+        cancelSolveTimeout();
         solveButton.setText(calculateButtonLabel());
         if (showMessage) {
             solutionText.setText("已取消计算。求解器会继续在后台完成预热，不会阻塞界面。 ");

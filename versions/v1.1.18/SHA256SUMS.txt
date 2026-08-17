@@ -1,0 +1,2 @@
+829bb01c7fa44cd921d92d0620e16ca0abd77ca45ff216923ecf61acee0fa8b3  CubeMaster-3x3-v1.1.18-layered-stability-debug.apk
+95d6b5a4b61aab4407d0e3cc398cbc58c2168097d604f79cd7565d3e5906a3f0  CubeMaster-3x3-v1.1.18-Android-Source.zip
