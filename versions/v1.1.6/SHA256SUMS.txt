@@ -1,0 +1,2 @@
+b5a75f2f79cf3afde13d36917b9786d823bef90f663ac8850268b1ae391174a1  CubeMaster-3x3-v1.1.6-model-sync-debug.apk
+abc4467b003bbe74c516ba223d605e54e3c47982dc9cfe4d6d7fd9cbdddba079  CubeMaster-3x3-v1.1.6-Android-Source.zip

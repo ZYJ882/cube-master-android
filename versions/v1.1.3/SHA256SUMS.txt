@@ -1,0 +1,2 @@
+a7fd6e7e06757f342119a3b39980cf7f216ecf498e94b1280ec17e0bafd1e794  CubeMaster-3x3-v1.1.3-guided-color-entry-debug.apk
+7da11fa001293a66718598da9a19d6935c6c3617db2090fdd6ceabcc92f88633  CubeMaster-3x3-v1.1.3-Android-Source.zip

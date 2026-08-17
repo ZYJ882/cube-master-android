@@ -1,0 +1,2 @@
+8957218a8023b043645a5efef1fc4ba65a98c22dfe385693ac355248b4cfadbc  CubeMaster-3x3-v1.1.2-motion-debug.apk
+ec436e08b5ad0847ba1855e25be565aa6ad3265ac2cb0646c6f29db7147fccdc  CubeMaster-3x3-v1.1.2-Android-Source.zip

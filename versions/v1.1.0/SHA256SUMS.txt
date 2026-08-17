@@ -1,0 +1,2 @@
+22540e8bf653713f102e70747dae3fc59940a6c3be572a0cf7b9dde14a674cf1  CubeMaster-3x3-v1.1.0-liquid-glass-debug.apk
+0cce7f73888363c824f040164c91bbeb9970c643f751fbda3ac8067101c4bffb  CubeMaster-3x3-v1.1.0-Android-Source.zip

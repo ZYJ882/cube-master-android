@@ -1,0 +1,2 @@
+8f96db65d0ed1a160e093d2b5f01c7ef227191ab200415ea4c48b33de63a522c  CubeMaster-3x3-v1.1.1-solver-fix-debug.apk
+56ba6b243ab2fea996326ea6bcf2c47c19d27cb5231e2093bab6d8c95976186b  CubeMaster-3x3-v1.1.1-Android-Source.zip

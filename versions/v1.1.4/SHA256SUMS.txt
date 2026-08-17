@@ -1,0 +1,2 @@
+e16b5bdba3a63d83c94a341abfa5129dcad8fbee3cc23a19dc8dc16403e0197e  CubeMaster-3x3-v1.1.4-compact-grid-debug.apk
+8e45141eb650109e8748eed4325d72b8932fa73c3fb9de73a8a691abaadbaad8  CubeMaster-3x3-v1.1.4-Android-Source.zip

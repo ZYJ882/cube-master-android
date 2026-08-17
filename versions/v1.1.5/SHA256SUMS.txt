@@ -1,0 +1,2 @@
+0f0cdc04e77d0ea4863257e1736cfa6136e6a7f6604bad53960a493cb60cb9d5  CubeMaster-3x3-v1.1.5-state-guard-debug.apk
+c3f42259461d58eeee26eb5ddc43304c9148abf805d1374c9cc834ae1838b267  CubeMaster-3x3-v1.1.5-Android-Source.zip
