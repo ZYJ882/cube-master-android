@@ -30,8 +30,8 @@ public enum SolveMethod {
             "真实 ZZ",
             "EOLine · ZZ-F2L · OCLL · PLL",
             "棱定向进阶",
-            "独立受约束搜索先完成全部棱定向与 DF/DB 线；后续 F2L、OCLL 和 PLL 仅使用 R/L/U，并逐段验证。",
-            new String[]{"1. EOLine：全棱定向 + DF/DB Line", "2. ZZ-F2L：受限 R/L/U 角棱对", "3. OCLL：顶层角块朝向", "4. PLL：顶层排列并复原"});
+            "独立受约束搜索先完成全部棱定向与 DF/DB 线；ZZ-F2L 与 OCLL 仅使用 R/L/U，PLL 使用独立标准最后层算法表并逐段验证。",
+            new String[]{"1. EOLine：全棱定向 + DF/DB Line", "2. ZZ-F2L：受限 R/L/U 角棱对", "3. OCLL：顶层角块朝向", "4. PLL：标准最后层算法表排列并复原"});
 
     private final String displayName;
     private final String signature;

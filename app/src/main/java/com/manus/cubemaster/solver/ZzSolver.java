@@ -1,6 +1,7 @@
 package com.manus.cubemaster.solver;
 
 import com.manus.cubemaster.CubeState;
+import com.manus.cubemaster.solver.cfop.Constants;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -9,14 +10,16 @@ import java.util.List;
 /**
  * 真实 ZZ 分阶段规划器。
  *
- * <p>EOLine 由完整棱朝向与 DF/DB 定位的联合目标生成；随后的 F2L、OCLL、PLL 均限制为 R/L/U
- * 动作集合。各阶段共享并保持前序不变量，绝不以 Kociemba 完整解的重命名步骤替代。</p>
+ * <p>EOLine 由完整棱朝向与 DF/DB 定位的联合目标生成；F2L 与 OCLL 限制为 R/L/U。
+ * 最后的 PLL 使用标准最后层排列算法表（必要时含 F/B/R/L/U）并验证完整复原，绝不以 Kociemba
+ * 完整解的重命名步骤替代。</p>
  */
 public final class ZzSolver {
     private static final int MAX_STAGE_MOVES = 80;
     private static final int MAX_TOTAL_MOVES = 260;
     /** 剪枝表已在后台准备；实际阶段搜索须早于界面 12 秒兜底返回。 */
     private static final long PLANNING_BUDGET_MS = 7_000L;
+    private static final String[] TOP_TURNS = {"", "U", "U2", "U'"};
 
     private ZzSolver() { }
 
@@ -38,7 +41,6 @@ public final class ZzSolver {
         eolineGoal();
         for (int pair = 0; pair <= 4; pair++) f2lGoal(pair);
         ocllGoal();
-        pllGoal();
     }
 
     public static Result solve(String currentFacelets) {
@@ -72,9 +74,15 @@ public final class ZzSolver {
                 "ZZ OCLL", "保持完整 F2L，仅定向最后层四个角块，不提前承担最后层排列。");
 
         StageSearch.Goal pll = pllGoal();
-        append(current, verifier, stages, allMoves, deadline, pll,
-                StageSearch.RLU_MOVES, 16,
-                "ZZ PLL", "保持顶层朝向，排列顶层角块与棱块并完成整颗魔方复原。");
+        List<String> pllMoves = findPllCase(verifier.facelets());
+        if (pllMoves != null) {
+            appendKnown(current, verifier, stages, allMoves, pll, pllMoves,
+                    "ZZ PLL", "保持 EOLine、F2L 与 OCLL 成果，使用标准 PLL 算法表排列最后层并完成整颗魔方复原。");
+        } else {
+            append(current, verifier, stages, allMoves, deadline, pll,
+                    StageSearch.ALL_OUTER_MOVES, 18,
+                    "ZZ PLL", "未匹配标准 PLL 表时，使用独立最后层搜索排列顶层角块与棱块并完成整颗魔方复原。");
+        }
 
         if (!CubeState.SOLVED.equals(verifier.facelets())) throw new IllegalStateException("ZZ PLL 未完成整颗魔方复原");
         return new Result(stages, allMoves);
@@ -116,11 +124,70 @@ public final class ZzSolver {
                 StageSearch.corners(new int[]{0, 1, 2, 3}, StageSearch.RLU_MOVES));
     }
 
+    /**
+     * OCLL 后仅有标准 PLL 排列。以 CFOP MIT 内核中已收录的 PLL 表为案例库，枚举 U 对齐与 y 旋转；
+     * 每个候选都直接在主 CubeState 验证，因而这是 ZZ 的最后层阶段算法，不是完整两阶段解的回放。
+     */
+    private static List<String> findPllCase(String facelets) {
+        for (String raw : Constants.PLL_Algs) {
+            if (raw == null || raw.trim().isEmpty()) continue;
+            for (int rotation = 0; rotation < 4; rotation++) {
+                List<String> body = rotateY(raw, rotation);
+                for (String before : TOP_TURNS) {
+                    for (String after : TOP_TURNS) {
+                        List<String> candidate = new ArrayList<>();
+                        if (!before.isEmpty()) candidate.add(before);
+                        candidate.addAll(body);
+                        if (!after.isEmpty()) candidate.add(after);
+                        CubeState trial = new CubeState(facelets);
+                        trial.applyMoves(candidate);
+                        if (CubeState.SOLVED.equals(trial.facelets())) return candidate;
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    private static List<String> rotateY(String raw, int turns) {
+        List<String> out = new ArrayList<>();
+        for (String token : raw.trim().split("\\s+")) {
+            if (token.isEmpty()) continue;
+            char face = token.charAt(0);
+            for (int i = 0; i < turns; i++) {
+                switch (face) {
+                    case 'F': face = 'R'; break;
+                    case 'R': face = 'B'; break;
+                    case 'B': face = 'L'; break;
+                    case 'L': face = 'F'; break;
+                    default: break;
+                }
+            }
+            out.add(face + token.substring(1));
+        }
+        return out;
+    }
+
+    private static CubieCube appendKnown(CubieCube current, CubeState verifier, List<LayerByLayerSolver.Stage> stages,
+                                          List<String> allMoves, StageSearch.Goal goal, List<String> moves,
+                                          String title, String detail) {
+        if (moves.size() > MAX_STAGE_MOVES || allMoves.size() + moves.size() > MAX_TOTAL_MOVES) {
+            throw new IllegalStateException("ZZ 动作异常过长，已安全停止计算");
+        }
+        CubieCube next = StageSearch.apply(current, moves);
+        if (!goal.isSolved(StageSearch.Snapshot.from(next))) throw new IllegalStateException("ZZ 阶段状态验证失败：" + title);
+        verifier.applyMoves(moves);
+        if (!CubeState.SOLVED.equals(verifier.facelets())) throw new IllegalStateException("ZZ 主状态验证失败：" + title);
+        stages.add(new LayerByLayerSolver.Stage(title, detail, moves));
+        allMoves.addAll(moves);
+        return next;
+    }
+
     private static CubieCube append(CubieCube current, CubeState verifier, List<LayerByLayerSolver.Stage> stages,
                                     List<String> allMoves, long deadline, StageSearch.Goal goal, int[] allowedMoves,
                                     int maxDepth, String title, String detail) {
         long remainingNanos = deadline - System.nanoTime();
-        if (remainingNanos <= 0L) throw new IllegalStateException("ZZ 阶段规划超过 10 秒安全预算");
+        if (remainingNanos <= 0L) throw new IllegalStateException("ZZ 阶段规划超过 7 秒安全预算");
         List<String> moves = StageSearch.solve(current, goal, allowedMoves, maxDepth,
                 Math.max(1L, remainingNanos / 1_000_000L));
         if (moves == null) throw new IllegalStateException("ZZ 阶段未在限定搜索深度内完成：" + title);

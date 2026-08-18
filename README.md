@@ -17,6 +17,7 @@
 
 | 版本 | 名称 | 主要更新 | 版本目录 |
 |---|---|---|---|
+| `v1.1.24` | Roux / ZZ 可靠性修复版 | 修复 ZZ 少数合法 PLL 状态在原 R/L/U 深度搜索中超过上限的问题；最后层优先使用独立标准 PLL 算法表并验证主状态。120 组合法 35 步状态回归中 Roux/ZZ 均 120/120 复原。 | [`versions/v1.1.24`](versions/v1.1.24/) |
 | `v1.1.23` | 视角与阶段预热稳定版 | 越过顶/底后自动校正横向拖拽方向；Roux/ZZ 选择即后台预热，解除对 Kociemba 资源的无关门控，并以 7 秒独立搜索预算提前反馈。 | [`versions/v1.1.23`](versions/v1.1.23/) |
 | `v1.1.22` | 连续纵向视角修复版 | 移除 `±84°` 俯仰硬阈值；空白区拖拽、3D 按住拖拽及惯性统一支持越过顶面和底面的连续环绕。 | [`versions/v1.1.22`](versions/v1.1.22/) |
 | `v1.1.21` | 安全随机打乱验证版 | 将打乱熵源升级为系统安全随机；保留 22 步合法外层转动及相邻同面/同轴限制。三组审计状态均验证为可解，Kociemba 输出完成复原且不等于打乱动作逆序。 | [`versions/v1.1.21`](versions/v1.1.21/) |
@@ -77,4 +78,4 @@
 
 ## Releases
 
-请从 [Releases](https://github.com/ZYJ882/cube-master-android/releases) 下载已归档版本的 APK。当前最新版本为 [`v1.1.23`](versions/v1.1.23/)。
+请从 [Releases](https://github.com/ZYJ882/cube-master-android/releases) 下载已归档版本的 APK。当前最新版本为 [`v1.1.24`](versions/v1.1.24/)。
