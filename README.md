@@ -17,6 +17,7 @@
 
 | 版本 | 名称 | 主要更新 | 版本目录 |
 |---|---|---|---|
+| `v1.1.27` | 中层立体动画连续性修复版 | 为 M/E/S 的九个中层小块绘制随动画旋转的立方体体积与侧面，消除固定中心之间的悬浮贴纸视觉断层。 | [`versions/v1.1.27`](versions/v1.1.27/) |
 | `v1.1.26` | 中层中心一致性修复版 | 三维与上色界面固定显示六个中心颜色；内部保留 M/E/S 中心朝向并在求解前归一化，避免手动中层转动后出现伪不可解状态。 | [`versions/v1.1.26`](versions/v1.1.26/) |
 | `v1.1.25` | Roux 首次就绪资源加载版 | 将四张 Roux Block 精确距离表预生成并随 APK 加载，消除手机端首次使用现场 BFS 构建导致的长期“后台准备”状态。 | [`versions/v1.1.25`](versions/v1.1.25/) |
 | `v1.1.24` | Roux / ZZ 可靠性修复版 | 修复 ZZ 少数合法 PLL 状态在原 R/L/U 深度搜索中超过上限的问题；最后层优先使用独立标准 PLL 算法表并验证主状态。120 组合法 35 步状态回归中 Roux/ZZ 均 120/120 复原。 | [`versions/v1.1.24`](versions/v1.1.24/) |
@@ -80,4 +81,4 @@
 
 ## Releases
 
-请从 [Releases](https://github.com/ZYJ882/cube-master-android/releases) 下载已归档版本的 APK。当前最新版本为 [`v1.1.26`](versions/v1.1.26/)。
+请从 [Releases](https://github.com/ZYJ882/cube-master-android/releases) 下载已归档版本的 APK。当前最新版本为 [`v1.1.27`](versions/v1.1.27/)。

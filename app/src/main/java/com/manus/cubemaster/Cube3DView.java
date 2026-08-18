@@ -222,6 +222,9 @@ public final class Cube3DView extends View {
         canvas.drawOval(cx - scale * 1.70f, cy + scale * 1.12f, cx + scale * 1.70f, cy + scale * 1.77f, shadowPaint);
         canvas.restore();
 
+        // 中层在旋转时必须保留立方体体积；否则只转贴纸会产生“悬浮薄片”的视觉断层。
+        drawMiddleSliceBodies(canvas, cx, cy, scale);
+
         List<StickerPolygon> polygons = new ArrayList<>();
         for (int face = 0; face < 6; face++) {
             for (int row = 0; row < 3; row++) {
@@ -248,6 +251,63 @@ public final class Cube3DView extends View {
             paint.setColor(Color.argb(132, 240, 250, 255));
             canvas.drawPath(inset, paint);
             paint.setStyle(Paint.Style.FILL);
+        }
+    }
+
+    /** 为 M/E/S 的九个中层小块绘制随动画转动的深色塑料体和可见侧面。 */
+    private void drawMiddleSliceBodies(Canvas canvas, float cx, float cy, float scale) {
+        if (animationMove != 'M' && animationMove != 'E' && animationMove != 'S') return;
+        if (Math.abs(animationAngle) < .4f) return;
+        int[] axisInt = CubeState.rotationAxisForMove(animationMove);
+        float[] axis = new float[]{axisInt[0], axisInt[1], axisInt[2]};
+        List<BodyPolygon> faces = new ArrayList<>();
+        for (int first = -1; first <= 1; first++) {
+            for (int second = -1; second <= 1; second++) {
+                float[] center;
+                if (axisInt[0] != 0) center = new float[]{0f, first, second};
+                else if (axisInt[1] != 0) center = new float[]{first, 0f, second};
+                else center = new float[]{first, second, 0f};
+                addRotatingCubieFaces(faces, center, axis, cx, cy, scale);
+            }
+        }
+        Collections.sort(faces, Comparator.comparingDouble(p -> p.depth));
+        for (BodyPolygon face : faces) {
+            paint.setStyle(Paint.Style.FILL);
+            paint.setColor(face.color);
+            canvas.drawPath(face.path, paint);
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(Math.max(1f, scale * .014f));
+            paint.setColor(Color.argb(175, 5, 12, 25));
+            canvas.drawPath(face.path, paint);
+        }
+        paint.setStyle(Paint.Style.FILL);
+    }
+
+    private void addRotatingCubieFaces(List<BodyPolygon> target, float[] center, float[] axis, float cx, float cy, float scale) {
+        final float half = .486f;
+        float[][] vertices = new float[][]{
+                {center[0] - half, center[1] - half, center[2] - half}, {center[0] + half, center[1] - half, center[2] - half},
+                {center[0] + half, center[1] + half, center[2] - half}, {center[0] - half, center[1] + half, center[2] - half},
+                {center[0] - half, center[1] - half, center[2] + half}, {center[0] + half, center[1] - half, center[2] + half},
+                {center[0] + half, center[1] + half, center[2] + half}, {center[0] - half, center[1] + half, center[2] + half}
+        };
+        for (int i = 0; i < vertices.length; i++) vertices[i] = rotateMove(vertices[i], axis, animationAngle);
+        int[][] indices = {{4, 5, 6, 7}, {0, 3, 2, 1}, {3, 7, 6, 2}, {0, 1, 5, 4}, {1, 2, 6, 5}, {0, 4, 7, 3}};
+        float[][] normals = {{0, 0, 1}, {0, 0, -1}, {0, 1, 0}, {0, -1, 0}, {1, 0, 0}, {-1, 0, 0}};
+        int[] shades = {Color.rgb(25, 38, 58), Color.rgb(16, 26, 43), Color.rgb(31, 45, 65), Color.rgb(13, 22, 37), Color.rgb(28, 42, 62), Color.rgb(17, 28, 46)};
+        for (int side = 0; side < indices.length; side++) {
+            float[] normal = transform(rotateMove(normals[side], axis, animationAngle));
+            if (normal[2] <= .015f) continue;
+            Path path = new Path();
+            float depth = 0f;
+            for (int point = 0; point < 4; point++) {
+                float[] transformed = transform(vertices[indices[side][point]]);
+                depth += transformed[2];
+                PointF projected = project(transformed, cx, cy, scale);
+                if (point == 0) path.moveTo(projected.x, projected.y); else path.lineTo(projected.x, projected.y);
+            }
+            path.close();
+            target.add(new BodyPolygon(path, depth / 4f, shades[side]));
         }
     }
 
@@ -741,6 +801,17 @@ public final class Cube3DView extends View {
         final float yaw;
         final float pitch;
         CameraPose(float yaw, float pitch) { this.yaw = yaw; this.pitch = pitch; }
+    }
+
+    private static final class BodyPolygon {
+        final Path path;
+        final float depth;
+        final int color;
+        BodyPolygon(Path path, float depth, int color) {
+            this.path = path;
+            this.depth = depth;
+            this.color = color;
+        }
     }
 
     private static final class StickerPolygon {

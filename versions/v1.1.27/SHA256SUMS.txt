@@ -1,0 +1,2 @@
+444a52440f5d5125afde113c4e3ebf19e235c2759bf8d85ddf7e4bfad64afd30  CubeMaster-3x3-v1.1.27-middle-animation-debug.apk
+425fc333ae4ef8247a79e1d718130667b2445d648582d5edde3561f945ac480d  CubeMaster-3x3-v1.1.27-Android-Source.zip
