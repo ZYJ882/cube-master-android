@@ -1,0 +1,2 @@
+df48c191fe6007acb2815021427b993e079001567bc3323df62bfeafca885380  CubeMaster-3x3-v1.1.37-corner-gate-debug.apk
+dfc3107ef7190851a81500455dacfb5e46dc55d73ac9cf17ba064439f21199aa  CubeMaster-3x3-v1.1.37-Android-Source.zip

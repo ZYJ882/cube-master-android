@@ -1067,14 +1067,15 @@ public final class MainActivity extends AppCompatActivity {
         if (playing) {
             stopPlayback();
         } else {
-            if (!ensureCanRestore()) return;
             if (playbackIndex >= solutionMoves.size()) {
                 cube.setFacelets(beforePlayback == null ? cube.facelets() : beforePlayback);
                 if (editor != null) editor.adoptLiveState(cube);
                 playbackIndex = 0;
                 refreshAll();
-                if (!ensureCanRestore()) return;
             }
+            // 纯棱/纯角宏会在若干单步间暂时带动中心；只在一轮播放的第一步校验合法性。
+            // 暂停后继续必须保留该临时状态，不能再把它误判为“中心不标准”。
+            if (playbackIndex == 0 && !ensureCanRestore()) return;
             playing = true;
             playButton.setText("暂停还原");
             playbackTick.run();
@@ -1084,7 +1085,7 @@ public final class MainActivity extends AppCompatActivity {
     private final Runnable playbackTick = new Runnable() {
         @Override public void run() {
             if (!playing || cubeView == null || cubeView.isMoveAnimating()) return;
-            if (!ensureCanRestore()) return;
+            // 首步已在 togglePlayback() 校验；后续允许纯宏暂时改变中心位置，不能重复拦截。
             if (playbackIndex >= solutionMoves.size()) {
                 playing = false;
                 playButton.setText("再次演示");
@@ -1114,7 +1115,8 @@ public final class MainActivity extends AppCompatActivity {
     private void stepPlayback() {
         if (solutionMoves.isEmpty()) { toast("请先生成当前选择策略的可播放步骤。 "); return; }
         if (cubeView != null && cubeView.isMoveAnimating()) return;
-        if (!ensureCanRestore()) return;
+        // 仅从首步开始时校验；单步执行到含 M/E/S 的宏中途时中心可暂时不在标准面。
+        if (playbackIndex == 0 && !ensureCanRestore()) return;
         stopPlayback();
         if (playbackIndex >= solutionMoves.size()) {
             cube.setFacelets(beforePlayback == null ? cube.facelets() : beforePlayback);
