@@ -237,7 +237,11 @@ public final class Cube3DView extends View {
             paint.setColor(Color.rgb(9, 16, 30));
             canvas.drawPath(polygon.path, paint);
             Path inset = insetPath(polygon.points, .855f);
-            paint.setColor(stickerColor(source.charAt(polygon.stickerIndex)));
+            // 中心块是固定核心的视觉基准；中层状态中的中心朝向仅供求解前归一化，不能改变显示颜色。
+            char displayColor = polygon.row == 1 && polygon.col == 1
+                    ? CubeState.FACE_ORDER.charAt(polygon.face)
+                    : source.charAt(polygon.stickerIndex);
+            paint.setColor(stickerColor(displayColor));
             canvas.drawPath(inset, paint);
             paint.setStyle(Paint.Style.STROKE);
             paint.setStrokeWidth(Math.max(1f, scale * .018f));
@@ -304,6 +308,8 @@ public final class Cube3DView extends View {
     }
 
     private boolean belongsToRotatingLayer(int face, int row, int col) {
+        // M/E/S 的中心朝向仅记录给求解器归一化；固定核心的六个视觉中心不参与中层动画。
+        if ((animationMove == 'M' || animationMove == 'E' || animationMove == 'S') && row == 1 && col == 1) return false;
         int[] p = stickerCenter(face, row, col);
         int[] axis = CubeState.rotationAxisForMove(animationMove);
         return p[0] * axis[0] + p[1] * axis[1] + p[2] * axis[2] == CubeState.rotationLayerForMove(animationMove);

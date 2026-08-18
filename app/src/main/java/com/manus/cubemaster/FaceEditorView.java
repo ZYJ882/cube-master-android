@@ -62,6 +62,7 @@ public final class FaceEditorView extends LinearLayout {
     /** 主模型经过打乱、复位或还原后，以其真实颜色重置下方编辑状态。 */
     public void adoptLiveState(CubeState cube) {
         draft.setFacelets(cube.facelets());
+        // 中层转动的内部中心朝向保留给求解前归一化；上色界面绘制时会固定显示六个中心颜色。
         for (int index = 0; index < 54; index++) confirmed[index] = draft.get(index) != CubeState.UNKNOWN;
         manualEntryInProgress = draft.hasUnknownStickers();
         feedback = "已同步当前魔方状态；灰色格可继续上色。";
@@ -80,6 +81,7 @@ public final class FaceEditorView extends LinearLayout {
         CubeState markerCube = new CubeState(marker);
         markerCube.applyMove(move);
         for (int i = 0; i < 54; i++) confirmed[i] = markerCube.get(i) == 'U';
+        for (int face = 0; face < 6; face++) confirmed[CubeState.stickerIndex(face, 1, 1)] = true;
         refresh();
     }
 
@@ -282,7 +284,7 @@ public final class FaceEditorView extends LinearLayout {
             int index = CubeState.stickerIndex(activeFace, i / 3, i % 3);
             boolean center = i == 4;
             boolean known = confirmed[index];
-            char color = draft.get(index);
+            char color = center ? CubeState.FACE_ORDER.charAt(activeFace) : draft.get(index);
             stickerButtons[i].setEnabled(!center);
             if (!known && !center) {
                 stickerButtons[i].setText("点我\n填写");
