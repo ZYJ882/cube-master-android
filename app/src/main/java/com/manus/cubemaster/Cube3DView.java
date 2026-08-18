@@ -39,8 +39,8 @@ public final class Cube3DView extends View {
     private ValueAnimator layerSettleAnimator;
     private ValueAnimator cameraAnimator;
 
-    /** 默认以底白、上黄、前绿、后蓝姿态观察；仅改变镜头，不改变 URFDLB 求解坐标。 */
-    private static final float DEFAULT_YAW = 142f;
+    /** 默认以底白、上黄、前绿、后蓝姿态观察；从前左侧看绿色 F 面，橙色 L 面在右侧。 */
+    private static final float DEFAULT_YAW = -142f;
     private static final float DEFAULT_PITCH = 156f;
     private float yaw = DEFAULT_YAW;
     private float pitch = DEFAULT_PITCH;

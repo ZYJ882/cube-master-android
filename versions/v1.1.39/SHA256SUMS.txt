@@ -1,0 +1,2 @@
+beec65a8a9af61dd6f2caca3a6ca7a3e496ea7694172a243db98a00f1165556b  CubeMaster-3x3-v1.1.39-front-left-green-debug.apk
+cf98999b86043f282c74f2f2e357e68c102527feb691b12ead5ff1d334bb63b6  CubeMaster-3x3-v1.1.39-Android-Source.zip
