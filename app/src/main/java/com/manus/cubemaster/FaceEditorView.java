@@ -62,7 +62,7 @@ public final class FaceEditorView extends LinearLayout {
     /** 主模型经过打乱、复位或还原后，以其真实颜色重置下方编辑状态。 */
     public void adoptLiveState(CubeState cube) {
         draft.setFacelets(cube.facelets());
-        // 中层转动的内部中心朝向保留给求解前归一化；上色界面绘制时会固定显示六个中心颜色。
+        // 中层转动后的中心朝向与主状态同步显示；用户点击计算时才归一化为标准面对齐。
         for (int index = 0; index < 54; index++) confirmed[index] = draft.get(index) != CubeState.UNKNOWN;
         manualEntryInProgress = draft.hasUnknownStickers();
         feedback = "已同步当前魔方状态；灰色格可继续上色。";
@@ -284,14 +284,14 @@ public final class FaceEditorView extends LinearLayout {
             int index = CubeState.stickerIndex(activeFace, i / 3, i % 3);
             boolean center = i == 4;
             boolean known = confirmed[index];
-            char color = center ? CubeState.FACE_ORDER.charAt(activeFace) : draft.get(index);
+            char color = draft.get(index);
             stickerButtons[i].setEnabled(!center);
             if (!known && !center) {
                 stickerButtons[i].setText("点我\n填写");
                 stickerButtons[i].setTextColor(Color.rgb(179, 213, 239));
                 stickerButtons[i].setBackground(gradient(new int[]{Color.argb(52, 237, 250, 255), Color.argb(34, 117, 185, 255)}, 18, Color.argb(122, 220, 243, 255), dp(1)));
             } else {
-                stickerButtons[i].setText(center ? SHORT_NAMES[activeFace] + "\n中心" : "");
+                stickerButtons[i].setText(center ? SHORT_NAMES[colorIndex(color)] + "\n中心" : "");
                 stickerButtons[i].setTextColor(Color.argb(215, 7, 24, 36));
                 stickerButtons[i].setBackground(stickerBackground(CubeState.colorArgb(color), center));
             }

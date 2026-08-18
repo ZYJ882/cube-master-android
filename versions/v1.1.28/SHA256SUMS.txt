@@ -1,0 +1,2 @@
+1d24dcb109c287becb35d11edc85ef41e91c34e329aaa3b1bae9f94aba18aec7  CubeMaster-3x3-v1.1.28-center-follow-debug.apk
+199b8185deb5092dd6f74fca6fbb5bc2d9a657e5c4cf410f35ff4fa9eb610101  CubeMaster-3x3-v1.1.28-Android-Source.zip
