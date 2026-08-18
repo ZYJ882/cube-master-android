@@ -17,6 +17,7 @@
 
 | 版本 | 名称 | 主要更新 | 版本目录 |
 |---|---|---|---|
+| `v1.1.29` | Roux 阶段稳定性与进度修复版 | 修复 LSE 仅验证棱角而遗漏 M 切片中心朝向的假完成；Roux 现在验证中心复位，并实时显示 First Block、Second Block、CMLL、LSE 当前阶段；取消会中断 DFS，不再占住下一次计算。 | [`versions/v1.1.29`](versions/v1.1.29/) |
 | `v1.1.28` | 中心随层转动与计算前面对齐版 | M/E/S 转动时中心贴纸与层同步移动；仅在点击计算时按当前六个中心颜色整体面对齐到标准坐标，再校验求解。 | [`versions/v1.1.28`](versions/v1.1.28/) |
 | `v1.1.27` | 中层立体动画连续性修复版 | 为 M/E/S 的九个中层小块绘制随动画旋转的立方体体积与侧面，消除固定中心之间的悬浮贴纸视觉断层。 | [`versions/v1.1.27`](versions/v1.1.27/) |
 | `v1.1.26` | 中层中心一致性修复版 | 三维与上色界面固定显示六个中心颜色；内部保留 M/E/S 中心朝向并在求解前归一化，避免手动中层转动后出现伪不可解状态。 | [`versions/v1.1.26`](versions/v1.1.26/) |
@@ -82,4 +83,4 @@
 
 ## Releases
 
-请从 [Releases](https://github.com/ZYJ882/cube-master-android/releases) 下载已归档版本的 APK。当前最新版本为 [`v1.1.28`](versions/v1.1.28/)。
+请从 [Releases](https://github.com/ZYJ882/cube-master-android/releases) 下载已归档版本的 APK。当前最新版本为 [`v1.1.29`](versions/v1.1.29/)。

@@ -818,7 +818,13 @@ public final class MainActivity extends AppCompatActivity {
                     parsed = result.moves();
                     stages = result.stages();
                 } else if (methodAtRequest == SolveMethod.ROUX) {
-                    RouxSolver.Result result = RouxSolver.solve(snapshot);
+                    RouxSolver.Result result = RouxSolver.solve(snapshot, (title, detail, stageIndex, stageCount) ->
+                            runOnUiThread(() -> {
+                                if (requestId != solveRequestId || !solveInProgress) return;
+                                solutionText.setText("正在规划真实 Roux 第 " + stageIndex + "/" + stageCount
+                                        + " 阶段：" + title + "…");
+                                playStatus.setText(detail + " 可随时点击“取消计算”。");
+                            }));
                     parsed = result.moves();
                     stages = result.stages();
                 } else if (methodAtRequest == SolveMethod.ZZ) {
@@ -965,7 +971,7 @@ public final class MainActivity extends AppCompatActivity {
             solveRequestId++;
             stabilizeSolutionPanel();
             if (solveButton != null) solveButton.setText(calculateButtonLabel());
-            if (solutionText != null) solutionText.setText("计算已在 12 秒保护时间内停止。当前页面仍可继续使用；请重新计算，或改用高效计算机解。");
+            if (solutionText != null) solutionText.setText("计算已在 12 秒保护时间内停止。当前页面仍可继续使用；已中断 Roux 阶段搜索，不会占用下一次计算。请重新计算，或改用高效计算机解。");
             if (playStatus != null) playStatus.setText("求解未产生步骤，未开始还原。 ");
         };
         handler.postDelayed(solveTimeoutTask, SOLVE_REQUEST_TIMEOUT_MS);

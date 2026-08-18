@@ -60,18 +60,29 @@ final class StageSearch {
     private StageSearch() { }
 
     static List<String> solve(CubieCube cube, Goal goal, int[] moves, int maxDepth, long timeoutMs) {
+        return solve(cube, goal, moves, maxDepth, timeoutMs, false);
+    }
+
+    /**
+     * 在阶段目标之外可选地要求 M 切片中心回到计算开始时的朝向。CubieCube 只跟踪角块与棱块，
+     * 但本应用允许中心随 M/E/S 可视化移动；Roux 的 M/U LSE 若不附加该约束，可能会找到
+     * “六棱与四角复原、中心仍旋转”的假终点。
+     */
+    static List<String> solve(CubieCube cube, Goal goal, int[] moves, int maxDepth, long timeoutMs,
+                              boolean requireMiddleCentersRestored) {
         Snapshot initial = Snapshot.from(cube);
-        if (goal.isSolved(initial)) return new ArrayList<>();
+        if (goal.isSolved(initial) && !requireMiddleCentersRestored) return new ArrayList<>();
         long deadlineNanos = System.nanoTime() + timeoutMs * 1_000_000L;
         int lowerBound = goal.heuristic(initial);
         int[] path = new int[Math.max(1, maxDepth)];
         for (int depth = lowerBound; depth <= maxDepth; depth++) {
-            if (dfs(initial, goal, moves, depth, -1, path, 0, deadlineNanos)) {
+            if (dfs(initial, goal, moves, depth, -1, path, 0, deadlineNanos, 0,
+                    requireMiddleCentersRestored)) {
                 List<String> out = new ArrayList<>();
                 for (int i = 0; i < depth; i++) out.add(notation(path[i]));
                 return out;
             }
-            if (System.nanoTime() >= deadlineNanos) return null;
+            if (shouldStop(deadlineNanos)) return null;
         }
         return null;
     }
@@ -83,11 +94,12 @@ final class StageSearch {
     }
 
     private static boolean dfs(Snapshot current, Goal goal, int[] moves, int remaining, int lastFace,
-                               int[] path, int used, long deadlineNanos) {
-        if (System.nanoTime() >= deadlineNanos) return false;
+                               int[] path, int used, long deadlineNanos, int middleCenterTurns,
+                               boolean requireMiddleCentersRestored) {
+        if (shouldStop(deadlineNanos)) return false;
         int h = goal.heuristic(current);
         if (h > remaining) return false;
-        if (goal.isSolved(current)) return true;
+        if (goal.isSolved(current) && (!requireMiddleCentersRestored || middleCenterTurns == 0)) return true;
         if (remaining == 0) return false;
         for (int move : moves) {
             int face = faceOf(move);
@@ -95,9 +107,21 @@ final class StageSearch {
             Snapshot next = current.copy();
             next.apply(move);
             path[used] = move;
-            if (dfs(next, goal, moves, remaining - 1, face, path, used + 1, deadlineNanos)) return true;
+            int nextCenterTurns = (middleCenterTurns + middleCenterTurns(move)) & 3;
+            if (dfs(next, goal, moves, remaining - 1, face, path, used + 1, deadlineNanos,
+                    nextCenterTurns, requireMiddleCentersRestored)) return true;
         }
         return false;
+    }
+
+    private static boolean shouldStop(long deadlineNanos) {
+        return Thread.currentThread().isInterrupted() || System.nanoTime() >= deadlineNanos;
+    }
+
+    /** M、M2、M′ 分别让四枚被 M 切片带动的中心旋转 1、2、3 个四分之一周期。 */
+    private static int middleCenterTurns(int move) {
+        if (move < M || move > M + 2) return 0;
+        return move % 3 == 0 ? 1 : move % 3 == 1 ? 2 : 3;
     }
 
     static Goal goal(DistanceOracle... oracles) {

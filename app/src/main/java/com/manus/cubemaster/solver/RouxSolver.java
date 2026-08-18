@@ -22,6 +22,11 @@ public final class RouxSolver {
 
     private RouxSolver() { }
 
+    /** 后台阶段开始时的轻量回调；调用方应自行切换到 UI 线程。 */
+    public interface ProgressListener {
+        void onStagePlanning(String title, String detail, int stageIndex, int stageCount);
+    }
+
     public static final class Result {
         private final List<LayerByLayerSolver.Stage> stages;
         private final List<String> moves;
@@ -51,6 +56,10 @@ public final class RouxSolver {
     }
 
     public static Result solve(String currentFacelets) {
+        return solve(currentFacelets, null);
+    }
+
+    public static Result solve(String currentFacelets, ProgressListener progressListener) {
         String validation = SolverFacade.validate(currentFacelets);
         if (validation != null) throw new IllegalArgumentException(validation);
         if (SolverFacade.isSolved(currentFacelets)) return new Result(Collections.emptyList(), Collections.emptyList());
@@ -61,28 +70,41 @@ public final class RouxSolver {
         List<String> allMoves = new ArrayList<>();
         long deadline = System.nanoTime() + PLANNING_BUDGET_MS * 1_000_000L;
 
+        String firstTitle = "Roux First Block";
+        String firstDetail = "实际完成左侧 1×2×3 块：两个底角与三条相邻棱均归位并定向。";
+        notifyStage(progressListener, firstTitle, firstDetail, 1);
         StageSearch.Goal firstBlock = firstBlockGoal();
         current = append(current, verifier, stages, allMoves, deadline, firstBlock,
-                StageSearch.ALL_OUTER_MOVES, 14,
-                "Roux First Block", "实际完成左侧 1×2×3 块：两个底角与三条相邻棱均归位并定向。");
+                StageSearch.ALL_OUTER_MOVES, 14, firstTitle, firstDetail);
 
+        String secondTitle = "Roux Second Block";
+        String secondDetail = "保留左块，实际完成右侧 1×2×3 块；此时仅顶层四角和最后六棱未完成。";
+        notifyStage(progressListener, secondTitle, secondDetail, 2);
         StageSearch.Goal secondBlock = secondBlockGoal();
         current = append(current, verifier, stages, allMoves, deadline, secondBlock,
-                StageSearch.ALL_OUTER_MOVES, 17,
-                "Roux Second Block", "保留左块，实际完成右侧 1×2×3 块；此时仅顶层四角和最后六棱未完成。");
+                StageSearch.ALL_OUTER_MOVES, 17, secondTitle, secondDetail);
 
+        String cmllTitle = "Roux CMLL";
+        String cmllDetail = "在不破坏两个块的前提下，定向并排列最后层四个角块。";
+        notifyStage(progressListener, cmllTitle, cmllDetail, 3);
         StageSearch.Goal cmll = cmllGoal();
         current = append(current, verifier, stages, allMoves, deadline, cmll,
-                StageSearch.RLU_MOVES, 16,
-                "Roux CMLL", "在不破坏两个块的前提下，定向并排列最后层四个角块。");
+                StageSearch.RLU_MOVES, 16, cmllTitle, cmllDetail);
 
+        String lseTitle = "Roux LSE";
+        String lseDetail = "只使用 M/U 切片完成最后六条棱，并令 M 切片中心回到复原朝向；结束后验证整颗魔方复原。";
+        notifyStage(progressListener, lseTitle, lseDetail, 4);
         StageSearch.Goal lse = lseGoal();
         append(current, verifier, stages, allMoves, deadline, lse,
-                StageSearch.MU_MOVES, 18,
-                "Roux LSE", "只使用 M/U 切片完成最后六条棱；结束后验证整颗魔方复原。");
+                StageSearch.MU_MOVES, 18, true, lseTitle, lseDetail);
 
         if (!CubeState.SOLVED.equals(verifier.facelets())) throw new IllegalStateException("Roux LSE 未完成整颗魔方复原");
         return new Result(stages, allMoves);
+    }
+
+    private static void notifyStage(ProgressListener listener, String title, String detail, int stageIndex) {
+        if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException();
+        if (listener != null) listener.onStagePlanning(title, detail, stageIndex, 4);
     }
 
     private static StageSearch.Goal firstBlockGoal() {
@@ -112,10 +134,19 @@ public final class RouxSolver {
     private static CubieCube append(CubieCube current, CubeState verifier, List<LayerByLayerSolver.Stage> stages,
                                     List<String> allMoves, long deadline, StageSearch.Goal goal, int[] allowedMoves,
                                     int maxDepth, String title, String detail) {
+        return append(current, verifier, stages, allMoves, deadline, goal, allowedMoves, maxDepth,
+                false, title, detail);
+    }
+
+    private static CubieCube append(CubieCube current, CubeState verifier, List<LayerByLayerSolver.Stage> stages,
+                                    List<String> allMoves, long deadline, StageSearch.Goal goal, int[] allowedMoves,
+                                    int maxDepth, boolean requireMiddleCentersRestored, String title, String detail) {
         long remainingNanos = deadline - System.nanoTime();
-        if (remainingNanos <= 0L) throw new IllegalStateException("Roux 阶段规划超过 10 秒安全预算");
+        if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException();
+        if (remainingNanos <= 0L) throw new IllegalStateException("Roux 阶段规划超过 7 秒安全预算");
         List<String> moves = StageSearch.solve(current, goal, allowedMoves, maxDepth,
-                Math.max(1L, remainingNanos / 1_000_000L));
+                Math.max(1L, remainingNanos / 1_000_000L), requireMiddleCentersRestored);
+        if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException();
         if (moves == null) throw new IllegalStateException("Roux 阶段未在限定搜索深度内完成：" + title);
         if (moves.size() > MAX_STAGE_MOVES || allMoves.size() + moves.size() > MAX_TOTAL_MOVES) {
             throw new IllegalStateException("Roux 动作异常过长，已安全停止计算");
