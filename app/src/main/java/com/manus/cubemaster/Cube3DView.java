@@ -73,8 +73,8 @@ public final class Cube3DView extends View {
             long now = android.os.SystemClock.uptimeMillis();
             float dt = Math.min(2.5f, Math.max(.5f, (now - inertiaLastTime) / 16f));
             inertiaLastTime = now;
-            yaw += yawVelocity * dt;
-            pitch = clamp(pitch + pitchVelocity * dt, -84f, 84f);
+            yaw = wrapDegrees(yaw + yawVelocity * dt);
+            pitch = wrapDegrees(pitch + pitchVelocity * dt);
             float damping = (float) Math.pow(.90f, dt);
             yawVelocity *= damping;
             pitchVelocity *= damping;
@@ -180,8 +180,8 @@ public final class Cube3DView extends View {
 
     /** 用增量拖动控制视角，供“3D”和“眼睛”按钮复用。 */
     public void dragExternalCameraBy(float dx, float dy) {
-        yaw += dx * .48f;
-        pitch = clamp(pitch + dy * .42f, -84f, 84f);
+        yaw = wrapDegrees(yaw + dx * .48f);
+        pitch = wrapDegrees(pitch + dy * .42f);
         invalidate();
     }
 
@@ -423,8 +423,8 @@ public final class Cube3DView extends View {
                 } else {
                     float stepX = event.getX() - lastX;
                     float stepY = event.getY() - lastY;
-                    yaw += stepX * .42f;
-                    pitch = clamp(pitch + stepY * .38f, -84f, 84f);
+                    yaw = wrapDegrees(yaw + stepX * .42f);
+                    pitch = wrapDegrees(pitch + stepY * .38f);
                     lastX = event.getX();
                     lastY = event.getY();
                     invalidate();
@@ -702,6 +702,17 @@ public final class Cube3DView extends View {
         removeCallbacks(inertiaRunner);
         yawVelocity = 0f;
         pitchVelocity = 0f;
+    }
+
+    /**
+     * 视角可以连续越过顶面与底面。将数值规约到一个等价圈内仅防止长时间拖动后数值无限增长，
+     * 不会形成俯仰阈值或视觉跳变。
+     */
+    private static float wrapDegrees(float value) {
+        float wrapped = value % 360f;
+        if (wrapped <= -180f) wrapped += 360f;
+        if (wrapped > 180f) wrapped -= 360f;
+        return wrapped;
     }
 
     private static float clamp(float value, float min, float max) {

@@ -1,0 +1,2 @@
+104e5155742079580266152b6184b771530f077cfa5ef10487514fce7ba9868d  CubeMaster-3x3-v1.1.22-continuous-camera-debug.apk
+0e25db2e7c1c9464b8bc0308ec7cb519ae7f492d42ad02c03bff2391afff056e  CubeMaster-3x3-v1.1.22-Android-Source.zip
