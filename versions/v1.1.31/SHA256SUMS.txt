@@ -1,0 +1,2 @@
+4ee0478c7cde48dd57867198ee0be2511754b5eb351631a3fea6f9fb1bb0f271  CubeMaster-3x3-v1.1.31-piece-first-stable-debug.apk
+4c8ce6552ad2317243b0a71be3054aa04342cdde0dba58a4a42d8af7baf608c8  CubeMaster-3x3-v1.1.31-Android-Source.zip

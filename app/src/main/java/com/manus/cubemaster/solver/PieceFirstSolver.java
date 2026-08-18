@@ -19,10 +19,11 @@ import java.util.Map;
  * 这两条路线不会调用或重命名 Kociemba 完整解。</p>
  */
 public final class PieceFirstSolver {
-    private static final long PLANNING_BUDGET_MS = 9_000L;
+    private static final long PLANNING_BUDGET_MS = 10_000L;
     private static final int MAX_STAGE_MOVES = 260;
     private static final int MAX_TOTAL_MOVES = 650;
-    private static final int MACRO_SEARCH_DEPTH = 4;
+    private static final int MACRO_SEARCH_DEPTH = 5;
+    private static final int MAX_OUTER_RETRY_DEPTH = 30;
     private static final int[][] EDGE_GROUPS = {
             {0, 1, 2}, {3, 4, 5}, {6, 7, 8}, {9, 10, 11}
     };
@@ -167,6 +168,11 @@ public final class PieceFirstSolver {
                                           String title, String detail) {
         List<String> moves = StageSearch.solve(current, goal, StageSearch.ALL_OUTER_MOVES, maxDepth,
                 remainingMs(deadlineNanos));
+        // 初始深度主要保证常见状态的响应速度；若已完整迭代仍无路径，则在同一总预算内加深一次。
+        if (moves == null && maxDepth < MAX_OUTER_RETRY_DEPTH) {
+            moves = StageSearch.solve(current, goal, StageSearch.ALL_OUTER_MOVES,
+                    Math.min(MAX_OUTER_RETRY_DEPTH, maxDepth + 6), remainingMs(deadlineNanos));
+        }
         if (moves == null) throw new IllegalStateException(title + "未在限定时间和搜索深度内完成");
         CubieCube next = StageSearch.apply(current, moves);
         if (!goal.isSolved(StageSearch.Snapshot.from(next))) throw new IllegalStateException(title + "阶段目标验证失败");
@@ -354,7 +360,7 @@ public final class PieceFirstSolver {
     private static long remainingMs(long deadlineNanos) {
         if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException();
         long remaining = (deadlineNanos - System.nanoTime()) / 1_000_000L;
-        if (remaining <= 0L) throw new IllegalStateException("棱先/角先规划超过 9 秒安全预算");
+        if (remaining <= 0L) throw new IllegalStateException("棱先/角先规划超过 10 秒安全预算");
         return remaining;
     }
 
