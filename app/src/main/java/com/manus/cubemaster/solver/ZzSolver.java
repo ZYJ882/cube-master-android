@@ -15,7 +15,8 @@ import java.util.List;
 public final class ZzSolver {
     private static final int MAX_STAGE_MOVES = 80;
     private static final int MAX_TOTAL_MOVES = 260;
-    private static final long PLANNING_BUDGET_MS = 10_000L;
+    /** 剪枝表已在后台准备；实际阶段搜索须早于界面 12 秒兜底返回。 */
+    private static final long PLANNING_BUDGET_MS = 7_000L;
 
     private ZzSolver() { }
 
@@ -32,6 +33,14 @@ public final class ZzSolver {
         public List<String> moves() { return moves; }
     }
 
+    /** 在用户计算前于后台建立 ZZ 各阶段共用的剪枝表。 */
+    public static void warmUp() {
+        eolineGoal();
+        for (int pair = 0; pair <= 4; pair++) f2lGoal(pair);
+        ocllGoal();
+        pllGoal();
+    }
+
     public static Result solve(String currentFacelets) {
         String validation = SolverFacade.validate(currentFacelets);
         if (validation != null) throw new IllegalArgumentException(validation);
@@ -43,9 +52,7 @@ public final class ZzSolver {
         List<String> allMoves = new ArrayList<>();
         long deadline = System.nanoTime() + PLANNING_BUDGET_MS * 1_000_000L;
 
-        StageSearch.Goal eoline = StageSearch.goal(
-                StageSearch.allEdgeOrientation(StageSearch.ALL_OUTER_MOVES),
-                StageSearch.edges(new int[]{5, 7}, StageSearch.ALL_OUTER_MOVES));
+        StageSearch.Goal eoline = eolineGoal();
         current = append(current, verifier, stages, allMoves, deadline, eoline,
                 StageSearch.ALL_OUTER_MOVES, 9,
                 "ZZ EOLine", "实际定向全部十二条棱，并让 DF、DB 两条底层棱归位形成 Line。");
@@ -59,27 +66,24 @@ public final class ZzSolver {
                     "ZZ-F2L 第 " + pair + " 对", "在仅 R/L/U 的受限动作集中插入第 " + pair + " 组角棱对，同时保持前序 F2L 槽。 ");
         }
 
-        StageSearch.Goal ocll = StageSearch.goal(
-                StageSearch.edges(new int[]{4, 5, 6, 7}, StageSearch.RLU_MOVES),
-                StageSearch.corners(new int[]{4, 5, 6, 7}, StageSearch.RLU_MOVES),
-                StageSearch.edges(new int[]{8, 9, 10, 11}, StageSearch.RLU_MOVES),
-                StageSearch.allCornerOrientation(StageSearch.RLU_MOVES));
+        StageSearch.Goal ocll = ocllGoal();
         current = append(current, verifier, stages, allMoves, deadline, ocll,
                 StageSearch.RLU_MOVES, 13,
                 "ZZ OCLL", "保持完整 F2L，仅定向最后层四个角块，不提前承担最后层排列。");
 
-        StageSearch.Goal pll = StageSearch.goal(
-                StageSearch.edges(new int[]{4, 5, 6, 7}, StageSearch.RLU_MOVES),
-                StageSearch.corners(new int[]{4, 5, 6, 7}, StageSearch.RLU_MOVES),
-                StageSearch.edges(new int[]{8, 9, 10, 11}, StageSearch.RLU_MOVES),
-                StageSearch.edges(new int[]{0, 1, 2, 3}, StageSearch.RLU_MOVES),
-                StageSearch.corners(new int[]{0, 1, 2, 3}, StageSearch.RLU_MOVES));
+        StageSearch.Goal pll = pllGoal();
         append(current, verifier, stages, allMoves, deadline, pll,
                 StageSearch.RLU_MOVES, 16,
                 "ZZ PLL", "保持顶层朝向，排列顶层角块与棱块并完成整颗魔方复原。");
 
         if (!CubeState.SOLVED.equals(verifier.facelets())) throw new IllegalStateException("ZZ PLL 未完成整颗魔方复原");
         return new Result(stages, allMoves);
+    }
+
+    private static StageSearch.Goal eolineGoal() {
+        return StageSearch.goal(
+                StageSearch.allEdgeOrientation(StageSearch.ALL_OUTER_MOVES),
+                StageSearch.edges(new int[]{5, 7}, StageSearch.ALL_OUTER_MOVES));
     }
 
     private static StageSearch.Goal f2lGoal(int pairs) {
@@ -93,6 +97,23 @@ public final class ZzSolver {
                 StageSearch.edges(new int[]{4, 5, 6, 7}, StageSearch.RLU_MOVES),
                 StageSearch.corners(corners, StageSearch.RLU_MOVES),
                 StageSearch.edges(middleEdges, StageSearch.RLU_MOVES));
+    }
+
+    private static StageSearch.Goal ocllGoal() {
+        return StageSearch.goal(
+                StageSearch.edges(new int[]{4, 5, 6, 7}, StageSearch.RLU_MOVES),
+                StageSearch.corners(new int[]{4, 5, 6, 7}, StageSearch.RLU_MOVES),
+                StageSearch.edges(new int[]{8, 9, 10, 11}, StageSearch.RLU_MOVES),
+                StageSearch.allCornerOrientation(StageSearch.RLU_MOVES));
+    }
+
+    private static StageSearch.Goal pllGoal() {
+        return StageSearch.goal(
+                StageSearch.edges(new int[]{4, 5, 6, 7}, StageSearch.RLU_MOVES),
+                StageSearch.corners(new int[]{4, 5, 6, 7}, StageSearch.RLU_MOVES),
+                StageSearch.edges(new int[]{8, 9, 10, 11}, StageSearch.RLU_MOVES),
+                StageSearch.edges(new int[]{0, 1, 2, 3}, StageSearch.RLU_MOVES),
+                StageSearch.corners(new int[]{0, 1, 2, 3}, StageSearch.RLU_MOVES));
     }
 
     private static CubieCube append(CubieCube current, CubeState verifier, List<LayerByLayerSolver.Stage> stages,

@@ -118,13 +118,23 @@ final class StageSearch {
         return getOracle(new CornerOrientationOracle(moves));
     }
 
-    private static synchronized DistanceOracle getOracle(DistanceOracle oracle) {
+    /**
+     * 查表构建可能持续数秒；不能持有全局缓存锁执行 BFS，否则后台预热 Roux 时会阻塞已就绪的
+     * ZZ 阶段查询。构建完成后再以短锁提交缓存；极端竞争下宁可丢弃一个重复构建结果，也不阻塞交互求解。
+     */
+    private static DistanceOracle getOracle(DistanceOracle oracle) {
         String key = oracle.cacheKey();
-        DistanceOracle cached = ORACLE_CACHE.get(key);
-        if (cached != null) return cached;
+        synchronized (ORACLE_CACHE) {
+            DistanceOracle cached = ORACLE_CACHE.get(key);
+            if (cached != null) return cached;
+        }
         oracle.initialize();
-        ORACLE_CACHE.put(key, oracle);
-        return oracle;
+        synchronized (ORACLE_CACHE) {
+            DistanceOracle cached = ORACLE_CACHE.get(key);
+            if (cached != null) return cached;
+            ORACLE_CACHE.put(key, oracle);
+            return oracle;
+        }
     }
 
     private static int[] range(int start, int end) {

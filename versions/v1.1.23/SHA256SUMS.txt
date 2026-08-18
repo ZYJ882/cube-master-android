@@ -1,0 +1,2 @@
+53f723f264860f2babc47ffc4c73bba47f727d6ba79ac40d647dbb7d978446a1  CubeMaster-3x3-v1.1.23-stability-debug.apk
+f0603dc0a8ebf1a430748781e69e9d5c5f7ca80be58981f75ae71eb3cc0dbeb1  CubeMaster-3x3-v1.1.23-Android-Source.zip

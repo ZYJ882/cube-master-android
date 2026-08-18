@@ -73,7 +73,7 @@ public final class Cube3DView extends View {
             long now = android.os.SystemClock.uptimeMillis();
             float dt = Math.min(2.5f, Math.max(.5f, (now - inertiaLastTime) / 16f));
             inertiaLastTime = now;
-            yaw = wrapDegrees(yaw + yawVelocity * dt);
+            yaw = wrapDegrees(yaw + yawVelocity * dt * horizontalOrbitSign());
             pitch = wrapDegrees(pitch + pitchVelocity * dt);
             float damping = (float) Math.pow(.90f, dt);
             yawVelocity *= damping;
@@ -180,7 +180,7 @@ public final class Cube3DView extends View {
 
     /** 用增量拖动控制视角，供“3D”和“眼睛”按钮复用。 */
     public void dragExternalCameraBy(float dx, float dy) {
-        yaw = wrapDegrees(yaw + dx * .48f);
+        yaw = wrapDegrees(yaw + dx * .48f * horizontalOrbitSign());
         pitch = wrapDegrees(pitch + dy * .42f);
         invalidate();
     }
@@ -423,7 +423,7 @@ public final class Cube3DView extends View {
                 } else {
                     float stepX = event.getX() - lastX;
                     float stepY = event.getY() - lastY;
-                    yaw = wrapDegrees(yaw + stepX * .42f);
+                    yaw = wrapDegrees(yaw + stepX * .42f * horizontalOrbitSign());
                     pitch = wrapDegrees(pitch + stepY * .38f);
                     lastX = event.getX();
                     lastY = event.getY();
@@ -702,6 +702,11 @@ public final class Cube3DView extends View {
         removeCallbacks(inertiaRunner);
         yawVelocity = 0f;
         pitchVelocity = 0f;
+    }
+
+    /** 当俯仰超过顶面或底面后，修正横向拖拽符号以保持屏幕左右方向不反转。 */
+    private float horizontalOrbitSign() {
+        return Math.cos(Math.toRadians(pitch)) >= 0d ? 1f : -1f;
     }
 
     /**

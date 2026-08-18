@@ -49,6 +49,8 @@ public final class MainActivity extends AppCompatActivity {
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final ExecutorService solveExecutor = Executors.newSingleThreadExecutor();
     private final ExecutorService warmUpExecutor = Executors.newSingleThreadExecutor();
+    /** Roux 与 ZZ 表彼此独立；双工作线程避免用户切换方法时被另一条路线的预热排队阻塞。 */
+    private final ExecutorService stageWarmUpExecutor = Executors.newFixedThreadPool(2);
     private final List<String> solutionMoves = new ArrayList<>();
     private final List<LayerByLayerSolver.Stage> layerStages = new ArrayList<>();
     private final List<String> lastScrambleMoves = new ArrayList<>();
@@ -57,10 +59,15 @@ public final class MainActivity extends AppCompatActivity {
     /** 打乱采用系统熵支持的安全随机源；仅生成合法外层转动。 */
     private final SecureRandom random = new SecureRandom();
     private Future<?> warmUpFuture;
+    private Future<?> rouxWarmUpFuture;
+    private Future<?> zzWarmUpFuture;
     private Future<?> activeSolveFuture;
     private boolean solveInProgress = false;
     private boolean solverTablesReady = false;
     private boolean solverInitializationFailed = false;
+    private boolean rouxStageReady = false;
+    private boolean zzStageReady = false;
+    private SolveMethod pendingStageCalculateMethod;
     private boolean pendingCalculateAfterLoad = false;
     private long solverInitializationAttempt = 0L;
     private long solveRequestId = 0L;
@@ -407,7 +414,12 @@ public final class MainActivity extends AppCompatActivity {
             solutionText.setText("已切换至“" + method.displayName() + "”。\n"
                     + method.description() + "\n\n点击“" + calculateButtonLabel() + "”以针对当前状态生成可播放步骤。");
         }
-        if (playStatus != null) playStatus.setText("已选择独立“" + method.displayName() + "”求解器；旧解法已清除。 ");
+        if (requiresStageWarmUp(method) && !isStageSolverReady(method)) {
+            startStageSolverWarmUp(method);
+            if (playStatus != null) playStatus.setText("已选择“" + method.displayName() + "”；正在后台准备阶段表，完成后可立即计算。 ");
+        } else if (playStatus != null) {
+            playStatus.setText("已选择独立“" + method.displayName() + "”求解器；旧解法已清除。 ");
+        }
     }
 
     private void refreshMethodSelection() {
@@ -432,6 +444,8 @@ public final class MainActivity extends AppCompatActivity {
     private String calculateButtonLabel() {
         if (selectedSolveMethod == SolveMethod.LAYER_BY_LAYER) return "计算真实层先法";
         if (selectedSolveMethod == SolveMethod.CFOP) return "计算真实 CFOP";
+        if (selectedSolveMethod == SolveMethod.ROUX) return "计算真实 Roux";
+        if (selectedSolveMethod == SolveMethod.ZZ) return "计算真实 ZZ";
         return "计算高效解法";
     }
 
@@ -718,12 +732,20 @@ public final class MainActivity extends AppCompatActivity {
             playStatus.setText("还原校验等待完整颜色状态。 ");
             return;
         }
-        if (solverInitializationFailed) {
+        final SolveMethod requestedMethod = selectedSolveMethod;
+        if (requiresStageWarmUp(requestedMethod) && !isStageSolverReady(requestedMethod)) {
+            pendingStageCalculateMethod = requestedMethod;
+            startStageSolverWarmUp(requestedMethod);
+            solutionText.setText("正在后台准备“" + requestedMethod.displayName() + "”的阶段剪枝表；准备完成后将自动计算。 ");
+            playStatus.setText("首次使用正在准备独立阶段搜索，不占用 12 秒实际求解保护。 ");
+            return;
+        }
+        if (requiresKociembaTables(requestedMethod) && solverInitializationFailed) {
             solutionText.setText("正在重新加载 Kociemba 查表资源；加载完成后请再次计算当前状态。 ");
             startSolverWarmUp();
             return;
         }
-        if (!solverTablesReady) {
+        if (requiresKociembaTables(requestedMethod) && !solverTablesReady) {
             pendingCalculateAfterLoad = true;
             solutionText.setText("正在加载 Kociemba 查表资源；加载完成后将自动求解当前状态。 ");
             playStatus.setText("正在加载内置坐标与剪枝表，最长等待 8 秒。 ");
@@ -759,7 +781,7 @@ public final class MainActivity extends AppCompatActivity {
         playButton.setEnabled(false);
         solveButton.setEnabled(true);
         solveButton.setText("取消计算");
-        final SolveMethod methodAtRequest = selectedSolveMethod;
+        final SolveMethod methodAtRequest = requestedMethod;
         solutionText.setText(methodAtRequest == SolveMethod.LAYER_BY_LAYER
                 ? "正在按真实层先法依次规划底层十字、首层、中层和顶层…"
                 : methodAtRequest == SolveMethod.CFOP
@@ -812,6 +834,55 @@ public final class MainActivity extends AppCompatActivity {
                 }
             }
         });
+    }
+
+    /** 仅 Kociemba 与内部需两阶段输入的层先法依赖随 APK 加载的坐标表。 */
+    private static boolean requiresKociembaTables(SolveMethod method) {
+        return method == SolveMethod.KOCIEMBA || method == SolveMethod.LAYER_BY_LAYER;
+    }
+
+    private static boolean requiresStageWarmUp(SolveMethod method) {
+        return method == SolveMethod.ROUX || method == SolveMethod.ZZ;
+    }
+
+    private boolean isStageSolverReady(SolveMethod method) {
+        return method == SolveMethod.ROUX ? rouxStageReady : method == SolveMethod.ZZ && zzStageReady;
+    }
+
+    /** 首次请求时仅预热所选路线，避免 Roux 大型表阻塞 ZZ 或额外占满内存。 */
+    private void startStageSolverWarmUp(SolveMethod method) {
+        if (method == SolveMethod.ROUX) {
+            if (rouxStageReady || rouxWarmUpFuture != null) return;
+            rouxWarmUpFuture = stageWarmUpExecutor.submit(() -> warmStageSolver(method));
+        } else if (method == SolveMethod.ZZ) {
+            if (zzStageReady || zzWarmUpFuture != null) return;
+            zzWarmUpFuture = stageWarmUpExecutor.submit(() -> warmStageSolver(method));
+        }
+    }
+
+    private void warmStageSolver(SolveMethod method) {
+        try {
+            if (method == SolveMethod.ROUX) RouxSolver.warmUp(); else ZzSolver.warmUp();
+            runOnUiThread(() -> {
+                if (method == SolveMethod.ROUX) { rouxStageReady = true; rouxWarmUpFuture = null; }
+                else { zzStageReady = true; zzWarmUpFuture = null; }
+                if (pendingStageCalculateMethod == method && !solveInProgress && selectedSolveMethod == method) {
+                    pendingStageCalculateMethod = null;
+                    calculateSolution();
+                } else if (!solveInProgress && selectedSolveMethod == method) {
+                    playStatus.setText(method.displayName() + " 阶段表已准备，可立即计算。 ");
+                }
+            });
+        } catch (Throwable error) {
+            runOnUiThread(() -> {
+                if (method == SolveMethod.ROUX) rouxWarmUpFuture = null; else zzWarmUpFuture = null;
+                if (pendingStageCalculateMethod == method) pendingStageCalculateMethod = null;
+                if (!solveInProgress && selectedSolveMethod == method) {
+                    solutionText.setText(method.displayName() + " 阶段表准备失败：" + messageOf(error));
+                    playStatus.setText("未开始实际求解；可重新点击计算，或选择其他方法。 ");
+                }
+            });
+        }
     }
 
     private void finishSolveSuccess(long requestId, String snapshot, SolveMethod methodAtRequest,
@@ -1101,8 +1172,11 @@ public final class MainActivity extends AppCompatActivity {
         handler.removeCallbacksAndMessages(null);
         if (activeSolveFuture != null) activeSolveFuture.cancel(true);
         if (warmUpFuture != null) warmUpFuture.cancel(true);
+        if (rouxWarmUpFuture != null) rouxWarmUpFuture.cancel(true);
+        if (zzWarmUpFuture != null) zzWarmUpFuture.cancel(true);
         solveExecutor.shutdownNow();
         warmUpExecutor.shutdownNow();
+        stageWarmUpExecutor.shutdownNow();
         super.onDestroy();
     }
 }
