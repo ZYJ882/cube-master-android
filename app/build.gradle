@@ -10,8 +10,8 @@ android {
         applicationId 'com.manus.cubemaster'
         minSdk 24
         targetSdk 35
-        versionCode 35
-        versionName '1.1.33'
+        versionCode 36
+        versionName '1.1.34'
     }
 
     buildFeatures {

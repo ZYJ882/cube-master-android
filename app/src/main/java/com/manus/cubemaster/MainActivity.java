@@ -801,9 +801,9 @@ public final class MainActivity extends AppCompatActivity {
                 : methodAtRequest == SolveMethod.ROUX
                 ? "正在按真实 Roux 依次规划 First Block、Second Block、CMLL、LSE…"
                 : methodAtRequest == SolveMethod.EDGES_FIRST
-                ? "正在按真实棱先依次完成四组棱，再用纯角宏完成八角…"
+                ? "正在按真实棱先规划完整十二棱目标，再用纯角宏完成八角…"
                 : methodAtRequest == SolveMethod.CORNERS_FIRST
-                ? "正在按真实角先先完成全部八角，再用纯棱宏完成十二棱…"
+                ? "正在按真实角先规划完整八角目标，再用纯棱宏完成十二棱…"
                 : methodAtRequest == SolveMethod.ZZ
                 ? "正在按真实 ZZ 依次规划 EOLine、受限 ZZ-F2L、OCLL、标准 PLL…"
                 : "正在使用 Kociemba 两阶段算法计算当前状态的标准解法…");
@@ -981,9 +981,9 @@ public final class MainActivity extends AppCompatActivity {
                     : selectedSolveMethod == SolveMethod.ROUX
                     ? "真实 Roux 已就绪：将按两个 Block、CMLL、M/U LSE 的顺序播放。"
                     : selectedSolveMethod == SolveMethod.EDGES_FIRST
-                    ? "真实棱先已就绪：将先播放四组棱，后播放保持棱不变的纯角宏。"
+                    ? "真实棱先已就绪：将先播放完整十二棱目标，再播放保持棱不变的纯角收尾。"
                     : selectedSolveMethod == SolveMethod.CORNERS_FIRST
-                    ? "真实角先已就绪：将先播放完整八角，后播放保持角不变的纯棱宏。"
+                    ? "真实角先已就绪：将先播放完整八角目标，再播放保持角不变的纯棱收尾。"
                     : selectedSolveMethod == SolveMethod.ZZ
                     ? "真实 ZZ 已就绪：将按 EOLine、受限 F2L、OCLL、标准 PLL 的顺序播放。"
                     : "Kociemba 解法已就绪，可单步查看或自动还原。");
