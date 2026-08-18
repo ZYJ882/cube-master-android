@@ -1,0 +1,2 @@
+40185ce79ca59593d1df06472b784109384cf679fd2ef1be3e9dce4685f512df  CubeMaster-3x3-v1.1.36-corner-playback-debug.apk
+e9151bcaacae2ad4cc14c75be16767d350e7b4bf469b69d04d18a04765ca5593  CubeMaster-3x3-v1.1.36-Android-Source.zip

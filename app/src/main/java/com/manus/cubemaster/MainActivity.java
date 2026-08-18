@@ -1088,7 +1088,12 @@ public final class MainActivity extends AppCompatActivity {
             if (playbackIndex >= solutionMoves.size()) {
                 playing = false;
                 playButton.setText("再次演示");
-                playStatus.setText("已完成“" + selectedSolveMethod.displayName() + "”展示；魔方已回到复原状态。 ");
+                if (!CubeState.SOLVED.equals(cube.facelets())) {
+                    playStatus.setText("还原播放结束但主状态未复原；已阻止错误完成提示，请重新计算。 ");
+                    solutionText.setText("“" + selectedSolveMethod.displayName() + "”动作播放后未通过完整复原校验。已保留当前状态，不能把未复原魔方误报为完成。");
+                } else {
+                    playStatus.setText("已完成“" + selectedSolveMethod.displayName() + "”展示；魔方已回到复原状态。 ");
+                }
                 refreshAll();
                 return;
             }
@@ -1127,7 +1132,11 @@ public final class MainActivity extends AppCompatActivity {
             refreshAll();
             if (playbackIndex >= solutionMoves.size()) {
                 playButton.setText("再次演示");
-                playStatus.setText("已完成“" + selectedSolveMethod.displayName() + "”展示的最后一步。再次演示可从头播放。 ");
+                if (CubeState.SOLVED.equals(cube.facelets())) {
+                    playStatus.setText("已完成“" + selectedSolveMethod.displayName() + "”展示的最后一步，主状态已复原。再次演示可从头播放。 ");
+                } else {
+                    playStatus.setText("最后一步后主状态未复原；已阻止错误完成提示，请重新计算。 ");
+                }
             }
         });
     }
@@ -1152,12 +1161,8 @@ public final class MainActivity extends AppCompatActivity {
             toast("灰色格尚未填写，暂不能还原。");
             return false;
         }
-                    if (cube.normalizeOrientationForSolver()) {
-            modelPreviewMode = false;
-            if (editor != null) editor.adoptLiveState(cube);
-            refreshAll();
-        }
-
+        // 计算按钮已在生成动作前完成一次中心面对齐。播放中绝不能再次面对齐：
+        // 纯棱/纯角收尾包含 M/E/S 时，逐步归一化会悄悄改写中层状态并破坏后续动作。
         String validation = SolverFacade.validate(cube.facelets());
         if (validation != null) {
             stopPlayback();
