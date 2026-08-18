@@ -1,0 +1,2 @@
+94a0bf2f6e3d2525109f061b321ee67812c448d95b93dfdf56f09cc0ced80397  CubeMaster-3x3-v1.1.38-default-view-playback-guard-debug.apk
+701214b914835e3ceaee36d6593cbd9ba0f56b08a368bd8598db760f0133f322  CubeMaster-3x3-v1.1.38-Android-Source.zip

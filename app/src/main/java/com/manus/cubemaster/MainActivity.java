@@ -862,6 +862,9 @@ public final class MainActivity extends AppCompatActivity {
                     parsed = CubeState.parseMoves(SolverFacade.solve(snapshot));
                     stages = new ArrayList<>();
                 }
+                // 与动画播放完全相同地在主状态模型中连续回放每一个动作；
+                // 不论采用哪种经典方法，未能真正复原的动作列表都不能进入播放面板。
+                requirePlayableSolution(snapshot, parsed, methodAtRequest);
                 runOnUiThread(() -> finishSolveSuccess(requestId, snapshot, methodAtRequest, parsed, stages));
             } catch (Throwable e) {
                 if (e instanceof CancellationException || Thread.currentThread().isInterrupted()) {
@@ -946,6 +949,20 @@ public final class MainActivity extends AppCompatActivity {
                     playStatus.setText("未开始实际求解；可重新点击计算，或选择其他方法。 ");
                 }
             });
+        }
+    }
+
+    /** 所有还原方法的交付前安全门：按 Android 主状态模型逐步回放，最后必须完整复原。 */
+    private static void requirePlayableSolution(String startFacelets, List<String> moves, SolveMethod method) {
+        CubeState replay = new CubeState(startFacelets);
+        for (String move : moves) {
+            if (move == null || !move.matches("[URFDLBMES](2|')?")) {
+                throw new IllegalStateException(method.displayName() + "生成了不可播放动作：" + move);
+            }
+            replay.applyMove(move);
+        }
+        if (!CubeState.SOLVED.equals(replay.facelets())) {
+            throw new IllegalStateException(method.displayName() + "动作逐步回放后未完整复原，已拒绝交付播放列表");
         }
     }
 
