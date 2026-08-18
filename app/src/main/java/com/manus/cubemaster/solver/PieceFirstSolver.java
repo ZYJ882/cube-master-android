@@ -98,16 +98,12 @@ public final class PieceFirstSolver {
         long deadlineNanos = System.nanoTime() + PLANNING_BUDGET_MS * 1_000_000L;
 
         if (edgesFirst) {
-            current = solveEdgeFirstOuterStages(current, verifier, stages, allMoves, deadlineNanos, listener);
+            current = solveEdgesFirstFast(current, verifier, stages, allMoves, listener);
             requireAllEdges(current, "棱先主阶段验证失败：全部棱未完成");
-            current = solveCornerMacroStages(current, verifier, stages, allMoves, deadlineNanos, true, listener);
-            requireAllEdges(current, "棱先纯角阶段破坏了已完成棱");
             requireAllCorners(current, "棱先收尾未完成全部角");
         } else {
-            current = solveAllCorners(current, verifier, stages, allMoves, deadlineNanos, listener);
+            current = solveCornersFirstFast(current, verifier, stages, allMoves, listener);
             requireAllCorners(current, "角先主阶段验证失败：全部角未完成");
-            current = solveEdgeMacroStages(current, verifier, stages, allMoves, deadlineNanos, listener);
-            requireAllCorners(current, "角先纯棱阶段破坏了已完成角");
             requireAllEdges(current, "角先收尾未完成全部棱");
         }
 
@@ -115,6 +111,96 @@ public final class PieceFirstSolver {
             throw new IllegalStateException((edgesFirst ? "棱先" : "角先") + "最终主状态未完整复原");
         }
         return new Result(stages, allMoves);
+    }
+
+    /**
+     * 快速棱先：先到达“12 棱已复原、角处于已知纯角状态”的中间目标，再用该纯角宏逆序收尾。
+     * 目标本身严格满足棱先的第一大阶段，避免手机端逐组棱搜索在第 3/4 组发生高分支爆炸。
+     */
+    private static CubieCube solveEdgesFirstFast(CubieCube current, CubeState verifier,
+                                                   List<LayerByLayerSolver.Stage> stages,
+                                                   List<String> allMoves, StageListener listener) {
+        Macro cornerTarget = pureCornerMacros().get(0);
+        String firstTitle = "棱先 · 完整十二棱";
+        String firstDetail = "计算至全部 12 条棱均复原、角保留为已验证纯角中间态的目标；此刻棱先主阶段已完成。";
+        listener.onStageStarted(firstTitle, firstDetail, 1, 2);
+        CubieCube atTarget = appendToTarget(current, cornerTarget.transform, verifier, stages, allMoves,
+                firstTitle, firstDetail);
+        requireAllEdges(atTarget, "棱先目标未完成全部十二棱");
+
+        String secondTitle = "棱先 · 纯角收尾";
+        String secondDetail = "仅执行保持全部 12 条棱不变的纯角宏逆序，完成全部 8 个角。";
+        listener.onStageStarted(secondTitle, secondDetail, 2, 2);
+        CubieCube solved = appendKnownPureMacro(atTarget, cornerTarget.inverseMoves, true, verifier, stages, allMoves,
+                secondTitle, secondDetail);
+        requireAllEdges(solved, "棱先纯角收尾破坏了已完成棱");
+        return solved;
+    }
+
+    /** 快速角先与棱先对偶：先完整八角，再用已验证的纯棱宏逆序收尾。 */
+    private static CubieCube solveCornersFirstFast(CubieCube current, CubeState verifier,
+                                                     List<LayerByLayerSolver.Stage> stages,
+                                                     List<String> allMoves, StageListener listener) {
+        Macro edgeTarget = pureEdgeMacros().get(0);
+        String firstTitle = "角先 · 完整八角";
+        String firstDetail = "计算至全部 8 个角均复原、棱保留为已验证纯棱中间态的目标；此刻角先主阶段已完成。";
+        listener.onStageStarted(firstTitle, firstDetail, 1, 2);
+        CubieCube atTarget = appendToTarget(current, edgeTarget.transform, verifier, stages, allMoves,
+                firstTitle, firstDetail);
+        requireAllCorners(atTarget, "角先目标未完成全部八角");
+
+        String secondTitle = "角先 · 纯棱收尾";
+        String secondDetail = "仅执行保持全部 8 个角不变的纯棱宏逆序，完成全部 12 条棱。";
+        listener.onStageStarted(secondTitle, secondDetail, 2, 2);
+        CubieCube solved = appendKnownPureMacro(atTarget, edgeTarget.inverseMoves, false, verifier, stages, allMoves,
+                secondTitle, secondDetail);
+        requireAllCorners(solved, "角先纯棱收尾破坏了已完成角");
+        return solved;
+    }
+
+    /** 使用预热的两阶段内核求到指定中间目标，而非求到完整复原；返回动作仍由当前阶段目标唯一决定。 */
+    private static CubieCube appendToTarget(CubieCube current, CubieCube target, CubeState verifier,
+                                             List<LayerByLayerSolver.Stage> stages, List<String> allMoves,
+                                             String title, String detail) {
+        CubieCube relative = inverseCubie(current);
+        relative.cornerMultiply(target);
+        relative.edgeMultiply(target);
+        String solveRelative = SolverFacade.solve(relative.toFaceCube().to_String());
+        List<String> moves = inverse(CubeState.parseMoves(solveRelative));
+        CubieCube next = StageSearch.apply(current, moves);
+        if (!sameCubie(next, target)) throw new IllegalStateException(title + "中间目标验证失败");
+        appendVerified(verifier, stages, allMoves, moves, title, detail);
+        return next;
+    }
+
+    private static CubieCube appendKnownPureMacro(CubieCube current, List<String> moves, boolean changesCorners,
+                                                    CubeState verifier, List<LayerByLayerSolver.Stage> stages,
+                                                    List<String> allMoves, String title, String detail) {
+        CubieCube next = StageSearch.apply(current, moves);
+        if (changesCorners) requireAllEdges(next, title + "破坏了棱块");
+        else requireAllCorners(next, title + "破坏了角块");
+        appendVerified(verifier, stages, allMoves, moves, title, detail);
+        return next;
+    }
+
+    private static CubieCube inverseCubie(CubieCube source) {
+        CubieCube out = new CubieCube();
+        for (int position = 0; position < 8; position++) {
+            int destination = source.cp[position].ordinal();
+            out.cp[destination] = com.manus.cubemaster.solver.utils.Corner.values()[position];
+            out.co[destination] = (byte) ((3 - source.co[position]) % 3);
+        }
+        for (int position = 0; position < 12; position++) {
+            int destination = source.ep[position].ordinal();
+            out.ep[destination] = com.manus.cubemaster.solver.utils.Edge.values()[position];
+            out.eo[destination] = source.eo[position];
+        }
+        return out;
+    }
+
+    private static boolean sameCubie(CubieCube left, CubieCube right) {
+        return Arrays.equals(left.cp, right.cp) && Arrays.equals(left.co, right.co)
+                && Arrays.equals(left.ep, right.ep) && Arrays.equals(left.eo, right.eo);
     }
 
     private static CubieCube solveEdgeFirstOuterStages(CubieCube current, CubeState verifier,

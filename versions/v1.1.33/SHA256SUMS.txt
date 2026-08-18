@@ -1,0 +1,2 @@
+53441ed3419db5d3ddc1130eae6d831fe99b6ac16e5f2110246fd540a6c4ae5f  CubeMaster-3x3-v1.1.33-piece-first-fast-debug.apk
+3ec4815740c94c0076da7cbf538444b6e781795a5eb93973ce609816b417c0b0  CubeMaster-3x3-v1.1.33-Android-Source.zip
