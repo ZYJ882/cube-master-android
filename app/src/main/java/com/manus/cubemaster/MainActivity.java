@@ -45,6 +45,7 @@ public final class MainActivity extends AppCompatActivity {
     private static final long SOLVER_RESOURCE_LOAD_TIMEOUT_MS = 8_000L;
     private static final long SOLVE_REQUEST_TIMEOUT_MS = 12_000L;
     private static final String KOCIEMBA_TABLE_ASSET = "kociemba_tables_v1.bin";
+    private static final String ROUX_TABLE_ASSET = "roux_block_tables_v1.bin";
     private final CubeState cube = new CubeState();
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final ExecutorService solveExecutor = Executors.newSingleThreadExecutor();
@@ -416,7 +417,9 @@ public final class MainActivity extends AppCompatActivity {
         }
         if (requiresStageWarmUp(method) && !isStageSolverReady(method)) {
             startStageSolverWarmUp(method);
-            if (playStatus != null) playStatus.setText("已选择“" + method.displayName() + "”；正在后台准备阶段表，完成后可立即计算。 ");
+            if (playStatus != null) playStatus.setText(method == SolveMethod.ROUX
+                    ? "已选择“真实 Roux”；正在读取 APK 内置阶段表，完成后可立即计算。 "
+                    : "已选择“" + method.displayName() + "”；正在后台准备阶段表，完成后可立即计算。 ");
         } else if (playStatus != null) {
             playStatus.setText("已选择独立“" + method.displayName() + "”求解器；旧解法已清除。 ");
         }
@@ -737,7 +740,9 @@ public final class MainActivity extends AppCompatActivity {
             pendingStageCalculateMethod = requestedMethod;
             startStageSolverWarmUp(requestedMethod);
             solutionText.setText("正在后台准备“" + requestedMethod.displayName() + "”的阶段剪枝表；准备完成后将自动计算。 ");
-            playStatus.setText("首次使用正在准备独立阶段搜索，不占用 12 秒实际求解保护。 ");
+            playStatus.setText(requestedMethod == SolveMethod.ROUX
+                    ? "正在加载随 APK 内置的 Roux 阶段表；不会在手机上现场构建大型剪枝表。 "
+                    : "首次使用正在准备独立阶段搜索，不占用 12 秒实际求解保护。 ");
             return;
         }
         if (requiresKociembaTables(requestedMethod) && solverInitializationFailed) {
@@ -862,7 +867,13 @@ public final class MainActivity extends AppCompatActivity {
 
     private void warmStageSolver(SolveMethod method) {
         try {
-            if (method == SolveMethod.ROUX) RouxSolver.warmUp(); else ZzSolver.warmUp();
+            if (method == SolveMethod.ROUX) {
+                try (java.io.InputStream tableResource = getAssets().open(ROUX_TABLE_ASSET, AssetManager.ACCESS_STREAMING)) {
+                    RouxSolver.warmUp(tableResource);
+                }
+            } else {
+                ZzSolver.warmUp();
+            }
             runOnUiThread(() -> {
                 if (method == SolveMethod.ROUX) { rouxStageReady = true; rouxWarmUpFuture = null; }
                 else { zzStageReady = true; zzWarmUpFuture = null; }

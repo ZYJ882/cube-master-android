@@ -1,0 +1,2 @@
+7eb68765c04d8b3545c2b72e9cb015f1625001dd475b4dc2b7c948eea52000ea  CubeMaster-3x3-v1.1.25-roux-table-debug.apk
+f00666ac7fa6cd7c108737b1d78d2a2c942856132c627d4a7ee862ea2c0c2e01  CubeMaster-3x3-v1.1.25-Android-Source.zip

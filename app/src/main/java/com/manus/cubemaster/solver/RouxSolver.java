@@ -2,6 +2,8 @@ package com.manus.cubemaster.solver;
 
 import com.manus.cubemaster.CubeState;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -39,6 +41,13 @@ public final class RouxSolver {
         secondBlockGoal();
         cmllGoal();
         lseGoal();
+    }
+
+    /** 从随 APK 发布的资源加载 Roux Block 距离表，避免首次使用在手机端进行大型 BFS 构建。 */
+    public static void warmUp(InputStream rouxTableResource) throws IOException {
+        if (rouxTableResource == null) throw new IOException("Roux 剪枝表资源不可用");
+        StageSearch.loadRouxBlockTables(rouxTableResource);
+        warmUp();
     }
 
     public static Result solve(String currentFacelets) {

@@ -1,5 +1,10 @@
 package com.manus.cubemaster.solver;
 
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -27,6 +32,8 @@ final class StageSearch {
 
     private static final Transform[] TRANSFORMS = new Transform[21];
     private static final Map<String, DistanceOracle> ORACLE_CACHE = new HashMap<>();
+    private static final int ROUX_TABLE_MAGIC = 0x434D5231; // CMR1
+    private static final int ROUX_TABLE_VERSION = 1;
 
     static {
         for (int move = 0; move < 18; move++) {
@@ -116,6 +123,50 @@ final class StageSearch {
 
     static DistanceOracle allCornerOrientation(int[] moves) {
         return getOracle(new CornerOrientationOracle(moves));
+    }
+
+    /** 将四张 Roux Block 精确距离表写入可随 APK 发布的紧凑二进制资源。仅供构建期生成器使用。 */
+    static void writeRouxBlockTables(OutputStream output) throws IOException {
+        DataOutputStream data = new DataOutputStream(output);
+        data.writeInt(ROUX_TABLE_MAGIC);
+        data.writeInt(ROUX_TABLE_VERSION);
+        BlockOracle[] tables = rouxBlockOracles();
+        data.writeInt(tables.length);
+        for (BlockOracle candidate : tables) {
+            DistanceOracle cached = getOracle(candidate);
+            if (!(cached instanceof BlockOracle)) throw new IOException("Roux Block 表缓存类型异常");
+            BlockOracle table = (BlockOracle) cached;
+            data.writeUTF(table.cacheKey());
+            table.writePacked(data);
+        }
+        data.flush();
+    }
+
+    /** 从 APK 资源直接加载四张 Roux Block 精确距离表；内容和坐标键均经过版本及键值校验。 */
+    static void loadRouxBlockTables(InputStream input) throws IOException {
+        DataInputStream data = new DataInputStream(input);
+        if (data.readInt() != ROUX_TABLE_MAGIC || data.readInt() != ROUX_TABLE_VERSION) {
+            throw new IOException("Roux 剪枝表资源版本不匹配");
+        }
+        BlockOracle[] tables = rouxBlockOracles();
+        if (data.readInt() != tables.length) throw new IOException("Roux 剪枝表资源数量不匹配");
+        for (BlockOracle table : tables) {
+            String key = data.readUTF();
+            if (!table.cacheKey().equals(key)) throw new IOException("Roux 剪枝表坐标不匹配");
+            table.readPacked(data);
+            synchronized (ORACLE_CACHE) {
+                ORACLE_CACHE.put(table.cacheKey(), table);
+            }
+        }
+    }
+
+    private static BlockOracle[] rouxBlockOracles() {
+        return new BlockOracle[]{
+                new BlockOracle(new int[]{6, 9, 10}, new int[]{5, 6}, ALL_OUTER_MOVES),
+                new BlockOracle(new int[]{4, 8, 11}, new int[]{4, 7}, ALL_OUTER_MOVES),
+                new BlockOracle(new int[]{6, 9, 10}, new int[]{5, 6}, RLU_MOVES),
+                new BlockOracle(new int[]{4, 8, 11}, new int[]{4, 7}, RLU_MOVES)
+        };
     }
 
     /**
@@ -329,6 +380,8 @@ final class StageSearch {
         private final int size;
         private final int goalKey;
         private byte[] distances;
+        /** 资源加载后每个距离使用半字节；构建期 BFS 保持字节表示以保留 -1 未访问标记。 */
+        private boolean packedDistances;
 
         BlockOracle(int[] edgePieces, int[] cornerPieces, int[] moves) {
             super(moves);
@@ -370,8 +423,40 @@ final class StageSearch {
             return edges.keyOf(cube) + edgeSize * corners.keyOf(cube);
         }
 
+        void writePacked(DataOutputStream data) throws IOException {
+            int packedSize = (size + 1) >>> 1;
+            data.writeInt(size);
+            data.writeInt(packedSize);
+            if (packedDistances) {
+                data.write(distances);
+                return;
+            }
+            for (int index = 0; index < size; index += 2) {
+                int low = distances[index] & 0xFF;
+                int high = index + 1 < size ? distances[index + 1] & 0xFF : 0;
+                // 255 是构建期 BFS 的不可达投影标记；资源中以 15 保存，不会出现在当前阶段的可达状态上。
+                low = low == 255 ? 15 : low;
+                high = high == 255 ? 15 : high;
+                if (low > 15 || high > 15) throw new IOException("Roux Block 距离超过紧凑表范围");
+                data.writeByte(low | (high << 4));
+            }
+        }
+
+        void readPacked(DataInputStream data) throws IOException {
+            int storedSize = data.readInt();
+            int packedSize = data.readInt();
+            int expectedSize = (size + 1) >>> 1;
+            if (storedSize != size || packedSize != expectedSize) throw new IOException("Roux Block 表大小不匹配");
+            distances = new byte[packedSize];
+            data.readFully(distances);
+            packedDistances = true;
+        }
+
         @Override int distance(Snapshot cube) {
-            return distances[keyOf(cube)] & 0xFF;
+            int key = keyOf(cube);
+            if (!packedDistances) return distances[key] & 0xFF;
+            int value = distances[key >>> 1] & 0xFF;
+            return (key & 1) == 0 ? value & 0x0F : value >>> 4;
         }
 
         @Override boolean isSolved(Snapshot cube) {
