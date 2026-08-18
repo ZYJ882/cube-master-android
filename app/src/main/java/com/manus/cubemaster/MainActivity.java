@@ -63,12 +63,14 @@ public final class MainActivity extends AppCompatActivity {
     private Future<?> warmUpFuture;
     private Future<?> rouxWarmUpFuture;
     private Future<?> zzWarmUpFuture;
+    private Future<?> pieceFirstWarmUpFuture;
     private Future<?> activeSolveFuture;
     private boolean solveInProgress = false;
     private boolean solverTablesReady = false;
     private boolean solverInitializationFailed = false;
     private boolean rouxStageReady = false;
     private boolean zzStageReady = false;
+    private boolean pieceFirstStageReady = false;
     private SolveMethod pendingStageCalculateMethod;
     private boolean pendingCalculateAfterLoad = false;
     private long solverInitializationAttempt = 0L;
@@ -829,11 +831,13 @@ public final class MainActivity extends AppCompatActivity {
                     parsed = result.moves();
                     stages = result.stages();
                 } else if (methodAtRequest == SolveMethod.EDGES_FIRST) {
-                    PieceFirstSolver.Result result = PieceFirstSolver.solveEdgesFirst(snapshot);
+                    PieceFirstSolver.Result result = PieceFirstSolver.solveEdgesFirst(snapshot, (title, detail, stageIndex, stageCount) ->
+                            runOnUiThread(() -> updatePieceFirstProgress(requestId, methodAtRequest, title, detail, stageIndex, stageCount)));
                     parsed = result.moves();
                     stages = result.stages();
                 } else if (methodAtRequest == SolveMethod.CORNERS_FIRST) {
-                    PieceFirstSolver.Result result = PieceFirstSolver.solveCornersFirst(snapshot);
+                    PieceFirstSolver.Result result = PieceFirstSolver.solveCornersFirst(snapshot, (title, detail, stageIndex, stageCount) ->
+                            runOnUiThread(() -> updatePieceFirstProgress(requestId, methodAtRequest, title, detail, stageIndex, stageCount)));
                     parsed = result.moves();
                     stages = result.stages();
                 } else if (methodAtRequest == SolveMethod.ROUX) {
@@ -866,17 +870,28 @@ public final class MainActivity extends AppCompatActivity {
         });
     }
 
+    private void updatePieceFirstProgress(long requestId, SolveMethod method, String title, String detail,
+                                          int stageIndex, int stageCount) {
+        if (requestId != solveRequestId || !solveInProgress || selectedSolveMethod != method) return;
+        solutionText.setText("正在规划“" + method.displayName() + "”第 " + stageIndex + "/" + stageCount
+                + " 阶段：" + title + "…");
+        playStatus.setText(detail + " 可随时点击“取消计算”。");
+    }
+
     /** 仅 Kociemba 与内部需两阶段输入的层先法依赖随 APK 加载的坐标表。 */
     private static boolean requiresKociembaTables(SolveMethod method) {
         return method == SolveMethod.KOCIEMBA || method == SolveMethod.LAYER_BY_LAYER;
     }
 
     private static boolean requiresStageWarmUp(SolveMethod method) {
-        return method == SolveMethod.ROUX || method == SolveMethod.ZZ;
+        return method == SolveMethod.ROUX || method == SolveMethod.ZZ
+                || method == SolveMethod.EDGES_FIRST || method == SolveMethod.CORNERS_FIRST;
     }
 
     private boolean isStageSolverReady(SolveMethod method) {
-        return method == SolveMethod.ROUX ? rouxStageReady : method == SolveMethod.ZZ && zzStageReady;
+        if (method == SolveMethod.ROUX) return rouxStageReady;
+        if (method == SolveMethod.ZZ) return zzStageReady;
+        return (method == SolveMethod.EDGES_FIRST || method == SolveMethod.CORNERS_FIRST) && pieceFirstStageReady;
     }
 
     /** 首次请求时仅预热所选路线，避免 Roux 大型表阻塞 ZZ 或额外占满内存。 */
@@ -887,6 +902,9 @@ public final class MainActivity extends AppCompatActivity {
         } else if (method == SolveMethod.ZZ) {
             if (zzStageReady || zzWarmUpFuture != null) return;
             zzWarmUpFuture = stageWarmUpExecutor.submit(() -> warmStageSolver(method));
+        } else if (method == SolveMethod.EDGES_FIRST || method == SolveMethod.CORNERS_FIRST) {
+            if (pieceFirstStageReady || pieceFirstWarmUpFuture != null) return;
+            pieceFirstWarmUpFuture = stageWarmUpExecutor.submit(() -> warmStageSolver(method));
         }
     }
 
@@ -896,12 +914,15 @@ public final class MainActivity extends AppCompatActivity {
                 try (java.io.InputStream tableResource = getAssets().open(ROUX_TABLE_ASSET, AssetManager.ACCESS_STREAMING)) {
                     RouxSolver.warmUp(tableResource);
                 }
-            } else {
+            } else if (method == SolveMethod.ZZ) {
                 ZzSolver.warmUp();
+            } else {
+                PieceFirstSolver.warmUp();
             }
             runOnUiThread(() -> {
                 if (method == SolveMethod.ROUX) { rouxStageReady = true; rouxWarmUpFuture = null; }
-                else { zzStageReady = true; zzWarmUpFuture = null; }
+                else if (method == SolveMethod.ZZ) { zzStageReady = true; zzWarmUpFuture = null; }
+                else { pieceFirstStageReady = true; pieceFirstWarmUpFuture = null; }
                 if (pendingStageCalculateMethod == method && !solveInProgress && selectedSolveMethod == method) {
                     pendingStageCalculateMethod = null;
                     calculateSolution();
@@ -911,7 +932,9 @@ public final class MainActivity extends AppCompatActivity {
             });
         } catch (Throwable error) {
             runOnUiThread(() -> {
-                if (method == SolveMethod.ROUX) rouxWarmUpFuture = null; else zzWarmUpFuture = null;
+                if (method == SolveMethod.ROUX) rouxWarmUpFuture = null;
+                else if (method == SolveMethod.ZZ) zzWarmUpFuture = null;
+                else pieceFirstWarmUpFuture = null;
                 if (pendingStageCalculateMethod == method) pendingStageCalculateMethod = null;
                 if (!solveInProgress && selectedSolveMethod == method) {
                     solutionText.setText(method.displayName() + " 阶段表准备失败：" + messageOf(error));

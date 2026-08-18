@@ -40,8 +40,20 @@ public final class PieceFirstSolver {
 
     private static volatile List<Macro> pureCornerMacros;
     private static volatile List<Macro> pureEdgeMacros;
+    private static final StageListener NO_STAGE_LISTENER = (title, detail, stageIndex, stageCount) -> { };
 
     private PieceFirstSolver() { }
+
+    /** 后台预组合纯角、纯棱宏，避免把首次初始化成本计入用户点击后的 12 秒计算窗口。 */
+    public static void warmUp() {
+        pureCornerMacros();
+        pureEdgeMacros();
+    }
+
+    /** 从后台求解线程回调当前实际阶段；调用方负责切回 UI 线程。 */
+    public interface StageListener {
+        void onStageStarted(String title, String detail, int stageIndex, int stageCount);
+    }
 
     public static final class Result {
         private final List<LayerByLayerSolver.Stage> stages;
@@ -58,15 +70,23 @@ public final class PieceFirstSolver {
 
     /** 经典棱先：所有棱先完成，所有角后完成。 */
     public static Result solveEdgesFirst(String currentFacelets) {
-        return solve(currentFacelets, true);
+        return solveEdgesFirst(currentFacelets, NO_STAGE_LISTENER);
+    }
+
+    public static Result solveEdgesFirst(String currentFacelets, StageListener listener) {
+        return solve(currentFacelets, true, listener == null ? NO_STAGE_LISTENER : listener);
     }
 
     /** 经典角先：所有角先完成，所有棱后完成。 */
     public static Result solveCornersFirst(String currentFacelets) {
-        return solve(currentFacelets, false);
+        return solveCornersFirst(currentFacelets, NO_STAGE_LISTENER);
     }
 
-    private static Result solve(String currentFacelets, boolean edgesFirst) {
+    public static Result solveCornersFirst(String currentFacelets, StageListener listener) {
+        return solve(currentFacelets, false, listener == null ? NO_STAGE_LISTENER : listener);
+    }
+
+    private static Result solve(String currentFacelets, boolean edgesFirst, StageListener listener) {
         String validation = SolverFacade.validate(currentFacelets);
         if (validation != null) throw new IllegalArgumentException(validation);
         if (SolverFacade.isSolved(currentFacelets)) return new Result(Collections.emptyList(), Collections.emptyList());
@@ -78,15 +98,15 @@ public final class PieceFirstSolver {
         long deadlineNanos = System.nanoTime() + PLANNING_BUDGET_MS * 1_000_000L;
 
         if (edgesFirst) {
-            current = solveEdgeFirstOuterStages(current, verifier, stages, allMoves, deadlineNanos);
+            current = solveEdgeFirstOuterStages(current, verifier, stages, allMoves, deadlineNanos, listener);
             requireAllEdges(current, "棱先主阶段验证失败：全部棱未完成");
-            current = solveCornerMacroStages(current, verifier, stages, allMoves, deadlineNanos, true);
+            current = solveCornerMacroStages(current, verifier, stages, allMoves, deadlineNanos, true, listener);
             requireAllEdges(current, "棱先纯角阶段破坏了已完成棱");
             requireAllCorners(current, "棱先收尾未完成全部角");
         } else {
-            current = solveAllCorners(current, verifier, stages, allMoves, deadlineNanos);
+            current = solveAllCorners(current, verifier, stages, allMoves, deadlineNanos, listener);
             requireAllCorners(current, "角先主阶段验证失败：全部角未完成");
-            current = solveEdgeMacroStages(current, verifier, stages, allMoves, deadlineNanos);
+            current = solveEdgeMacroStages(current, verifier, stages, allMoves, deadlineNanos, listener);
             requireAllCorners(current, "角先纯棱阶段破坏了已完成角");
             requireAllEdges(current, "角先收尾未完成全部棱");
         }
@@ -99,7 +119,8 @@ public final class PieceFirstSolver {
 
     private static CubieCube solveEdgeFirstOuterStages(CubieCube current, CubeState verifier,
                                                         List<LayerByLayerSolver.Stage> stages,
-                                                        List<String> allMoves, long deadlineNanos) {
+                                                        List<String> allMoves, long deadlineNanos,
+                                                        StageListener listener) {
         for (int stage = 0; stage < EDGE_GROUPS.length; stage++) {
             StageSearch.DistanceOracle[] goals = new StageSearch.DistanceOracle[stage + 1];
             for (int group = 0; group <= stage; group++) {
@@ -111,6 +132,7 @@ public final class PieceFirstSolver {
                     : stage == 3
                     ? "在保持前三组棱的前提下完成最后一组；此阶段结束后 12 条棱全部复原。"
                     : "保持此前已复原棱组，继续定位并定向下一组棱块。";
+            listener.onStageStarted(title, detail, stage + 1, 8);
             current = appendOuter(current, verifier, stages, allMoves, deadlineNanos,
                     StageSearch.goal(goals), 14 + stage * 3, title, detail);
         }
@@ -119,18 +141,21 @@ public final class PieceFirstSolver {
 
     private static CubieCube solveAllCorners(CubieCube current, CubeState verifier,
                                               List<LayerByLayerSolver.Stage> stages,
-                                              List<String> allMoves, long deadlineNanos) {
+                                              List<String> allMoves, long deadlineNanos,
+                                              StageListener listener) {
         StageSearch.Goal goal = StageSearch.goal(
                 StageSearch.allCornerPermutation(StageSearch.ALL_OUTER_MOVES),
                 StageSearch.allCornerOrientation(StageSearch.ALL_OUTER_MOVES));
-        return appendOuter(current, verifier, stages, allMoves, deadlineNanos, goal, 14,
-                "角先 · 完整八角", "实际完成并验证全部 8 个角块的位置与朝向；后续纯棱阶段不会移动这些角块。");
+        String title = "角先 · 完整八角";
+        String detail = "实际完成并验证全部 8 个角块的位置与朝向；后续纯棱阶段不会移动这些角块。";
+        listener.onStageStarted(title, detail, 1, 5);
+        return appendOuter(current, verifier, stages, allMoves, deadlineNanos, goal, 14, title, detail);
     }
 
     private static CubieCube solveCornerMacroStages(CubieCube current, CubeState verifier,
                                                      List<LayerByLayerSolver.Stage> stages,
                                                      List<String> allMoves, long deadlineNanos,
-                                                     boolean preserveEdges) {
+                                                     boolean preserveEdges, StageListener listener) {
         List<Macro> macros = pureCornerMacros();
         int[] cumulative = new int[0];
         for (int stage = 0; stage < CORNER_GROUPS.length; stage++) {
@@ -139,6 +164,7 @@ public final class PieceFirstSolver {
             String detail = stage == 3
                     ? "仅使用已验证的纯角宏完成最后角组；全程保持 12 条棱不变，完成整颗魔方。"
                     : "仅使用保持全部棱不变的纯角宏，逐组完成角块。";
+            listener.onStageStarted(title, detail, stage + 5, 8);
             current = appendMacro(current, verifier, stages, allMoves, deadlineNanos, macros,
                     cumulative, true, preserveEdges, title, detail);
         }
@@ -147,7 +173,8 @@ public final class PieceFirstSolver {
 
     private static CubieCube solveEdgeMacroStages(CubieCube current, CubeState verifier,
                                                    List<LayerByLayerSolver.Stage> stages,
-                                                   List<String> allMoves, long deadlineNanos) {
+                                                   List<String> allMoves, long deadlineNanos,
+                                                   StageListener listener) {
         List<Macro> macros = pureEdgeMacros();
         int[] cumulative = new int[0];
         for (int stage = 0; stage < EDGE_GROUPS.length; stage++) {
@@ -156,6 +183,7 @@ public final class PieceFirstSolver {
             String detail = stage == 3
                     ? "仅使用已验证的纯棱宏完成最后棱组；全程保持 8 个角不变，完成整颗魔方。"
                     : "仅使用保持全部角不变的纯棱宏，逐组完成棱块。";
+            listener.onStageStarted(title, detail, stage + 2, 5);
             current = appendMacro(current, verifier, stages, allMoves, deadlineNanos, macros,
                     cumulative, false, true, title, detail);
         }
@@ -237,7 +265,7 @@ public final class PieceFirstSolver {
             Map<String, CubieCube> nextFrontier = new HashMap<>();
             for (Map.Entry<String, CubieCube> entry : frontier.entrySet()) {
                 for (int macroIndex = 0; macroIndex < macros.size(); macroIndex++) {
-                    CubieCube next = StageSearch.apply(entry.getValue(), macros.get(macroIndex).moves);
+                    CubieCube next = applyMacro(entry.getValue(), macros.get(macroIndex));
                     String nextKey = projectionKey(next, pieces, corners);
                     if (visited.containsKey(nextKey)) continue;
                     visited.put(nextKey, new Node(entry.getKey(), macroIndex));
@@ -256,6 +284,18 @@ public final class PieceFirstSolver {
             }
         }
         return null;
+    }
+
+    /** 纯宏已在预热期合成为单个 CubieCube 变换，搜索期不再逐个展开其中的 10~30 个面转。 */
+    private static CubieCube applyMacro(CubieCube source, Macro macro) {
+        CubieCube out = new CubieCube();
+        out.cp = source.cp.clone();
+        out.co = source.co.clone();
+        out.ep = source.ep.clone();
+        out.eo = source.eo.clone();
+        out.cornerMultiply(macro.transform);
+        out.edgeMultiply(macro.transform);
+        return out;
     }
 
     private static List<String> reconstruct(String meeting, Map<String, Node> fromStart,
@@ -430,11 +470,13 @@ public final class PieceFirstSolver {
         final List<String> moves;
         final List<String> inverseMoves;
         final String signature;
+        final CubieCube transform;
 
-        Macro(List<String> moves, List<String> inverseMoves, String signature) {
+        Macro(List<String> moves, List<String> inverseMoves, String signature, CubieCube transform) {
             this.moves = Collections.unmodifiableList(new ArrayList<>(moves));
             this.inverseMoves = Collections.unmodifiableList(new ArrayList<>(inverseMoves));
             this.signature = signature;
+            this.transform = transform;
         }
 
         static Macro create(List<String> moves, boolean changesCorners) {
@@ -450,7 +492,7 @@ public final class PieceFirstSolver {
             String signature = projectionKey(cube,
                     changesCorners ? new int[]{0, 1, 2, 3, 4, 5, 6, 7} : new int[]{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
                     changesCorners);
-            return new Macro(moves, inverse(moves), signature);
+            return new Macro(moves, inverse(moves), signature, cube);
         }
     }
 }
