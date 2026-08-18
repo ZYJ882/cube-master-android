@@ -1,0 +1,2 @@
+6cea5d51121b9e26c4bd6e9fb60c34c122ab21074936f4eecd284453a68d735b  CubeMaster-3x3-v1.1.35-default-orientation-debug.apk
+03969944e58f207fa66b3841cc832054aac27f219aa3c57e27c873fe17f6c52c  CubeMaster-3x3-v1.1.35-Android-Source.zip

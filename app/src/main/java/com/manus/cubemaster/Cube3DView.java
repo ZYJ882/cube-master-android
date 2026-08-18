@@ -39,8 +39,11 @@ public final class Cube3DView extends View {
     private ValueAnimator layerSettleAnimator;
     private ValueAnimator cameraAnimator;
 
-    private float yaw = -38f;
-    private float pitch = -24f;
+    /** 默认以用户习惯的下白上黄姿态观察；仅改变镜头，不改变 URFDLB 求解坐标。 */
+    private static final float DEFAULT_YAW = -38f;
+    private static final float DEFAULT_PITCH = 156f;
+    private float yaw = DEFAULT_YAW;
+    private float pitch = DEFAULT_PITCH;
     private float lastX;
     private float lastY;
     private float downX;
@@ -164,8 +167,8 @@ public final class Cube3DView extends View {
     public void resetCamera() {
         stopInertia();
         if (cameraAnimator != null) cameraAnimator.cancel();
-        yaw = -38f;
-        pitch = -24f;
+        yaw = DEFAULT_YAW;
+        pitch = DEFAULT_PITCH;
         invalidate();
     }
 
