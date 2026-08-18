@@ -75,11 +75,12 @@ final class StageSearch {
         long deadlineNanos = System.nanoTime() + timeoutMs * 1_000_000L;
         int lowerBound = goal.heuristic(initial);
         int[] path = new int[Math.max(1, maxDepth)];
+        int[] solutionLength = {-1};
         for (int depth = lowerBound; depth <= maxDepth; depth++) {
             if (dfs(initial, goal, moves, depth, -1, path, 0, deadlineNanos, 0,
-                    requireMiddleCentersRestored)) {
+                    requireMiddleCentersRestored, solutionLength)) {
                 List<String> out = new ArrayList<>();
-                for (int i = 0; i < depth; i++) out.add(notation(path[i]));
+                for (int i = 0; i < solutionLength[0]; i++) out.add(notation(path[i]));
                 return out;
             }
             if (shouldStop(deadlineNanos)) return null;
@@ -95,11 +96,14 @@ final class StageSearch {
 
     private static boolean dfs(Snapshot current, Goal goal, int[] moves, int remaining, int lastFace,
                                int[] path, int used, long deadlineNanos, int middleCenterTurns,
-                               boolean requireMiddleCentersRestored) {
+                               boolean requireMiddleCentersRestored, int[] solutionLength) {
         if (shouldStop(deadlineNanos)) return false;
         int h = goal.heuristic(current);
         if (h > remaining) return false;
-        if (goal.isSolved(current) && (!requireMiddleCentersRestored || middleCenterTurns == 0)) return true;
+        if (goal.isSolved(current) && (!requireMiddleCentersRestored || middleCenterTurns == 0)) {
+            solutionLength[0] = used;
+            return true;
+        }
         if (remaining == 0) return false;
         for (int move : moves) {
             int face = faceOf(move);
@@ -109,7 +113,7 @@ final class StageSearch {
             path[used] = move;
             int nextCenterTurns = (middleCenterTurns + middleCenterTurns(move)) & 3;
             if (dfs(next, goal, moves, remaining - 1, face, path, used + 1, deadlineNanos,
-                    nextCenterTurns, requireMiddleCentersRestored)) return true;
+                    nextCenterTurns, requireMiddleCentersRestored, solutionLength)) return true;
         }
         return false;
     }
@@ -147,6 +151,11 @@ final class StageSearch {
 
     static DistanceOracle allCornerOrientation(int[] moves) {
         return getOracle(new CornerOrientationOracle(moves));
+    }
+
+    /** 完整八角排列的精确距离坐标，与角朝向坐标组合用于角先的第一大阶段。 */
+    static DistanceOracle allCornerPermutation(int[] moves) {
+        return getOracle(new CornerPermutationOracle(moves));
     }
 
     /** 将四张 Roux Block 精确距离表写入可随 APK 发布的紧凑二进制资源。仅供构建期生成器使用。 */
@@ -485,6 +494,87 @@ final class StageSearch {
 
         @Override boolean isSolved(Snapshot cube) {
             return keyOf(cube) == goalKey;
+        }
+    }
+
+    /** 完整八角排列的 8! 精确距离表；角朝向由 CornerOrientationOracle 独立提供。 */
+    private static final class CornerPermutationOracle extends DistanceOracle {
+        private static final int STATES = 40320;
+        private final byte[] distances = new byte[STATES];
+
+        CornerPermutationOracle(int[] moves) {
+            super(moves);
+        }
+
+        @Override String cacheKey() {
+            return "corner-permutation:" + Arrays.toString(moves);
+        }
+
+        @Override void initialize() {
+            Arrays.fill(distances, (byte) -1);
+            ArrayDeque<Integer> queue = new ArrayDeque<>();
+            distances[0] = 0;
+            queue.add(0);
+            while (!queue.isEmpty()) {
+                int key = queue.removeFirst();
+                int nextDepth = distances[key] + 1;
+                for (int move : moves) {
+                    int next = transition(key, move);
+                    if (distances[next] < 0) {
+                        distances[next] = (byte) nextDepth;
+                        queue.addLast(next);
+                    }
+                }
+            }
+        }
+
+        private int transition(int key, int move) {
+            int[] current = decode(key);
+            int[] next = new int[8];
+            Transform transform = TRANSFORMS[move];
+            for (int destination = 0; destination < 8; destination++) next[destination] = current[transform.cp[destination]];
+            return encode(next);
+        }
+
+        private int keyOf(Snapshot cube) {
+            return encode(cube.cp);
+        }
+
+        @Override int distance(Snapshot cube) {
+            return distances[keyOf(cube)] & 0xFF;
+        }
+
+        @Override boolean isSolved(Snapshot cube) {
+            return keyOf(cube) == 0;
+        }
+
+        private static int encode(int[] permutation) {
+            int key = 0;
+            for (int index = 0; index < 8; index++) {
+                int smaller = 0;
+                for (int later = index + 1; later < 8; later++) if (permutation[later] < permutation[index]) smaller++;
+                key = key * (8 - index) + smaller;
+            }
+            return key;
+        }
+
+        private static int[] decode(int key) {
+            int[] digits = new int[8];
+            for (int index = 7; index >= 0; index--) {
+                int base = 8 - index;
+                digits[index] = key % base;
+                key /= base;
+            }
+            int[] available = {0, 1, 2, 3, 4, 5, 6, 7};
+            int availableCount = 8;
+            int[] permutation = new int[8];
+            for (int index = 0; index < 8; index++) {
+                int pick = digits[index];
+                permutation[index] = available[pick];
+                System.arraycopy(available, pick + 1, available, pick, availableCount - pick - 1);
+                availableCount--;
+            }
+            return permutation;
         }
     }
 

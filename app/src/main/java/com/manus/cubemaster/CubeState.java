@@ -157,7 +157,7 @@ public final class CubeState {
         String[] parts = solution.trim().split("\\s+");
         List<String> moves = new ArrayList<>();
         for (String part : parts) {
-            if (part.matches("[URFDLB](2|')?")) moves.add(part);
+            if (part.matches("[URFDLBMES](2|')?")) moves.add(part);
         }
         return moves;
     }
