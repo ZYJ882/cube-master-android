@@ -1,0 +1,2 @@
+f52d72277d69262ca49e98fc655859383254bd7600ba2b348b669fc888feb1ab  CubeMaster-3x3-v1.1.40-solver-isolation-debug.apk
+7619071fe46276a8e98f504b75812e355a551affeba1aa1ca78c60d1ff3dbe04  CubeMaster-3x3-v1.1.40-Android-Source.zip

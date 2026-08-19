@@ -49,9 +49,8 @@ public final class MainActivity extends AppCompatActivity {
     private static final String ROUX_TABLE_ASSET = "roux_block_tables_v1.bin";
     private final CubeState cube = new CubeState();
     private final Handler handler = new Handler(Looper.getMainLooper());
+    /** 所有实际求解共用唯一串行通道：取消旧任务后，新方法只能在旧搜索响应中断并退出后开始，绝不并行占用 CPU。 */
     private final ExecutorService solveExecutor = Executors.newSingleThreadExecutor();
-    /** 棱先/角先旧任务可能在底层查表调用中延迟响应中断；独立可扩展通道避免新请求排队。 */
-    private final ExecutorService pieceFirstSolveExecutor = Executors.newCachedThreadPool();
     private final ExecutorService warmUpExecutor = Executors.newSingleThreadExecutor();
     /** Roux 与 ZZ 表彼此独立；双工作线程避免用户切换方法时被另一条路线的预热排队阻塞。 */
     private final ExecutorService stageWarmUpExecutor = Executors.newFixedThreadPool(2);
@@ -820,9 +819,9 @@ public final class MainActivity extends AppCompatActivity {
                 : methodAtRequest == SolveMethod.ZZ
                 ? "ZZ 将逐段验证全棱定向、DF/DB Line、受限 F2L、OCLL 与标准 PLL。 "
                 : "设备端两阶段搜索进行中，正在求解当前状态。 ");
-        ExecutorService requestExecutor = (methodAtRequest == SolveMethod.EDGES_FIRST || methodAtRequest == SolveMethod.CORNERS_FIRST)
-                ? pieceFirstSolveExecutor : solveExecutor;
-        activeSolveFuture = requestExecutor.submit(() -> {
+        // 实际求解一律串行，避免“先取消 A、立即点 B”时两个方法同时搜索。
+        // 各路线的预热仍是独立后台任务，但不属于用户点击后的实际求解。
+        activeSolveFuture = solveExecutor.submit(() -> {
             try {
                 final List<String> parsed;
                 final List<LayerByLayerSolver.Stage> stages;
@@ -1266,8 +1265,8 @@ public final class MainActivity extends AppCompatActivity {
         if (warmUpFuture != null) warmUpFuture.cancel(true);
         if (rouxWarmUpFuture != null) rouxWarmUpFuture.cancel(true);
         if (zzWarmUpFuture != null) zzWarmUpFuture.cancel(true);
+        if (pieceFirstWarmUpFuture != null) pieceFirstWarmUpFuture.cancel(true);
         solveExecutor.shutdownNow();
-        pieceFirstSolveExecutor.shutdownNow();
         warmUpExecutor.shutdownNow();
         stageWarmUpExecutor.shutdownNow();
         super.onDestroy();
