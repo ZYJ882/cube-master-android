@@ -6,6 +6,7 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.RectF;
+import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.util.Size;
@@ -97,7 +98,7 @@ public final class CameraScanDialog extends Dialog implements ImageAnalysis.Anal
         faceTitle = new TextView(getContext());
         faceTitle.setTextColor(Color.rgb(244, 250, 255));
         faceTitle.setTextSize(20);
-        faceTitle.setTypeface(null, 1);
+        faceTitle.setTypeface(null, Typeface.BOLD);
         faceTitle.setGravity(Gravity.CENTER);
         chrome.addView(faceTitle, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(32)));
 
@@ -142,7 +143,7 @@ public final class CameraScanDialog extends Dialog implements ImageAnalysis.Anal
         capture.setText("保存当前面");
         capture.setAllCaps(false);
         capture.setTextColor(Color.rgb(7, 29, 39));
-        capture.setTypeface(null, 1);
+        capture.setTypeface(null, Typeface.BOLD);
         capture.setTextSize(15);
         capture.setBackground(gradient(new int[]{Color.rgb(148, 243, 198), Color.rgb(113, 208, 255)}, 17, Color.argb(158, 241, 255, 255), dp(1)));
         capture.setOnClickListener(v -> {

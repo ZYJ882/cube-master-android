@@ -1,0 +1,2 @@
+b11b69789b4d06c29b37380e9a6c05691c1271b4d9d5cdb0a8241dbb52ad5aba  CubeMaster-3x3-v1.1.41-quality-optimized-debug.apk
+ccca751ee435114f391e157058b7b0deedc6644bd27d5561d919a9dbc1cd860c  CubeMaster-3x3-v1.1.41-Android-Source.zip

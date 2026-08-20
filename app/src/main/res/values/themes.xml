@@ -9,6 +9,5 @@
         <item name="android:windowNoTitle">true</item>
         <item name="colorPrimary">@color/accent</item>
         <item name="colorOnPrimary">@color/ink</item>
-        <item name="android:windowLightNavigationBar">false</item>
     </style>
 </resources>

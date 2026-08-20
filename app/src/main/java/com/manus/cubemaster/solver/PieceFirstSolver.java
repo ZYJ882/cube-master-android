@@ -324,15 +324,15 @@ public final class PieceFirstSolver {
 
     private static List<String> solveMacroProjection(CubieCube source, int[] pieces, boolean corners,
                                                       List<Macro> macros, long deadlineNanos) {
-        String startKey = projectionKey(source, pieces, corners);
+        long startKey = projectionKey(source, pieces, corners);
         CubieCube solved = new CubieCube();
-        String goalKey = projectionKey(solved, pieces, corners);
-        if (startKey.equals(goalKey)) return new ArrayList<>();
+        long goalKey = projectionKey(solved, pieces, corners);
+        if (startKey == goalKey) return new ArrayList<>();
 
-        Map<String, Node> fromStart = new HashMap<>();
-        Map<String, Node> fromGoal = new HashMap<>();
-        Map<String, CubieCube> startFrontier = new HashMap<>();
-        Map<String, CubieCube> goalFrontier = new HashMap<>();
+        Map<Long, Node> fromStart = new HashMap<>();
+        Map<Long, Node> fromGoal = new HashMap<>();
+        Map<Long, CubieCube> startFrontier = new HashMap<>();
+        Map<Long, CubieCube> goalFrontier = new HashMap<>();
         fromStart.put(startKey, Node.root());
         fromGoal.put(goalKey, Node.root());
         startFrontier.put(startKey, source);
@@ -345,14 +345,14 @@ public final class PieceFirstSolver {
             if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException();
             if (System.nanoTime() >= deadlineNanos) return null;
             boolean expandStart = startFrontier.size() <= goalFrontier.size();
-            Map<String, CubieCube> frontier = expandStart ? startFrontier : goalFrontier;
-            Map<String, Node> visited = expandStart ? fromStart : fromGoal;
-            Map<String, Node> otherVisited = expandStart ? fromGoal : fromStart;
-            Map<String, CubieCube> nextFrontier = new HashMap<>();
-            for (Map.Entry<String, CubieCube> entry : frontier.entrySet()) {
+            Map<Long, CubieCube> frontier = expandStart ? startFrontier : goalFrontier;
+            Map<Long, Node> visited = expandStart ? fromStart : fromGoal;
+            Map<Long, Node> otherVisited = expandStart ? fromGoal : fromStart;
+            Map<Long, CubieCube> nextFrontier = new HashMap<>();
+            for (Map.Entry<Long, CubieCube> entry : frontier.entrySet()) {
                 for (int macroIndex = 0; macroIndex < macros.size(); macroIndex++) {
                     CubieCube next = applyMacro(entry.getValue(), macros.get(macroIndex));
-                    String nextKey = projectionKey(next, pieces, corners);
+                    long nextKey = projectionKey(next, pieces, corners);
                     if (visited.containsKey(nextKey)) continue;
                     visited.put(nextKey, new Node(entry.getKey(), macroIndex));
                     if (otherVisited.containsKey(nextKey)) return reconstruct(nextKey, fromStart, fromGoal, macros);
@@ -384,15 +384,15 @@ public final class PieceFirstSolver {
         return out;
     }
 
-    private static List<String> reconstruct(String meeting, Map<String, Node> fromStart,
-                                            Map<String, Node> fromGoal, List<Macro> macros) {
+    private static List<String> reconstruct(long meeting, Map<Long, Node> fromStart,
+                                            Map<Long, Node> fromGoal, List<Macro> macros) {
         ArrayDeque<Integer> left = new ArrayDeque<>();
-        for (String key = meeting; fromStart.get(key).parent != null; key = fromStart.get(key).parent) {
+        for (long key = meeting; fromStart.get(key).parent != Node.ROOT_PARENT; key = fromStart.get(key).parent) {
             left.addFirst(fromStart.get(key).macroIndex);
         }
         List<String> out = new ArrayList<>();
         for (int macroIndex : left) out.addAll(macros.get(macroIndex).moves);
-        for (String key = meeting; fromGoal.get(key).parent != null; key = fromGoal.get(key).parent) {
+        for (long key = meeting; fromGoal.get(key).parent != Node.ROOT_PARENT; key = fromGoal.get(key).parent) {
             out.addAll(macros.get(fromGoal.get(key).macroIndex).inverseMoves);
         }
         return out;
@@ -438,7 +438,7 @@ public final class PieceFirstSolver {
             }
         }
 
-        LinkedHashMap<String, Macro> unique = new LinkedHashMap<>();
+        LinkedHashMap<Long, Macro> unique = new LinkedHashMap<>();
         for (List<String> setup : setups) {
             for (String base : bases) {
                 for (List<String> variant : Arrays.asList(CubeState.parseMoves(base), inverse(CubeState.parseMoves(base)))) {
@@ -511,28 +511,34 @@ public final class PieceFirstSolver {
         if (!piecesSolved(cube, new int[]{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}, false)) throw new IllegalStateException(error);
     }
 
-    private static String projectionKey(CubieCube cube, int[] pieces, boolean corners) {
-        StringBuilder out = new StringBuilder(pieces.length * 2);
-        if (corners) {
-            for (int piece : pieces) {
+    /**
+     * 将指定块的“位置 + 朝向”编码为无碰撞的 5-bit 分段键。角块和棱块的单块状态均不超过 24 种，
+     * 因而 8 角需要 40 bit、12 棱需要 60 bit，均安全容纳于 long；搜索期不再分配 String/char[]。
+     */
+    private static long projectionKey(CubieCube cube, int[] pieces, boolean corners) {
+        long key = 0L;
+        for (int slot = 0; slot < pieces.length; slot++) {
+            int piece = pieces[slot];
+            int encoded = -1;
+            if (corners) {
                 for (int position = 0; position < 8; position++) {
                     if (cube.cp[position].ordinal() == piece) {
-                        out.append((char) ('A' + position)).append((char) ('a' + cube.co[position]));
+                        encoded = position * 3 + cube.co[position];
                         break;
                     }
                 }
-            }
-        } else {
-            for (int piece : pieces) {
+            } else {
                 for (int position = 0; position < 12; position++) {
                     if (cube.ep[position].ordinal() == piece) {
-                        out.append((char) ('A' + position)).append((char) ('a' + cube.eo[position]));
+                        encoded = position * 2 + cube.eo[position];
                         break;
                     }
                 }
             }
+            if (encoded < 0) throw new IllegalStateException("投影中缺少目标块");
+            key |= (long) encoded << (slot * 5);
         }
-        return out.toString();
+        return key;
     }
 
     private static boolean standardCenters(String facelets) {
@@ -541,24 +547,25 @@ public final class PieceFirstSolver {
     }
 
     private static final class Node {
-        final String parent;
+        static final long ROOT_PARENT = -1L;
+        final long parent;
         final int macroIndex;
 
-        Node(String parent, int macroIndex) {
+        Node(long parent, int macroIndex) {
             this.parent = parent;
             this.macroIndex = macroIndex;
         }
 
-        static Node root() { return new Node(null, -1); }
+        static Node root() { return new Node(ROOT_PARENT, -1); }
     }
 
     private static final class Macro {
         final List<String> moves;
         final List<String> inverseMoves;
-        final String signature;
+        final long signature;
         final CubieCube transform;
 
-        Macro(List<String> moves, List<String> inverseMoves, String signature, CubieCube transform) {
+        Macro(List<String> moves, List<String> inverseMoves, long signature, CubieCube transform) {
             this.moves = Collections.unmodifiableList(new ArrayList<>(moves));
             this.inverseMoves = Collections.unmodifiableList(new ArrayList<>(inverseMoves));
             this.signature = signature;
@@ -575,7 +582,7 @@ public final class PieceFirstSolver {
             } else {
                 if (!piecesSolved(cube, new int[]{0, 1, 2, 3, 4, 5, 6, 7}, true)) return null;
             }
-            String signature = projectionKey(cube,
+            long signature = projectionKey(cube,
                     changesCorners ? new int[]{0, 1, 2, 3, 4, 5, 6, 7} : new int[]{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
                     changesCorners);
             return new Macro(moves, inverse(moves), signature, cube);

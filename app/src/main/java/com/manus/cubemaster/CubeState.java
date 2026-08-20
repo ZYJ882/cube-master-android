@@ -8,6 +8,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 
 /**
@@ -141,7 +142,7 @@ public final class CubeState {
 
     public void applyMove(String notation) {
         if (notation == null || notation.trim().isEmpty()) return;
-        String move = notation.trim().toUpperCase();
+        String move = notation.trim().toUpperCase(Locale.ROOT);
         int moveIndex = MOVE_ORDER.indexOf(move.charAt(0));
         if (moveIndex < 0) throw new IllegalArgumentException("不支持的转动：" + notation);
         int turns = move.endsWith("2") ? 2 : (move.endsWith("'") ? 3 : 1);
